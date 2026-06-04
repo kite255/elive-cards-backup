@@ -13,9 +13,6 @@ use App\Http\Controllers\EventSMSThankyouController;
 use App\Http\Controllers\EventSMSWelcomingController;
 use App\Http\Controllers\ExelSampleDownloadController;
 use App\Http\Controllers\InviteesController;
-use App\Http\Controllers\kamati\KamatiController;
-use App\Http\Controllers\kamati\KamatiManagementController;
-use App\Http\Controllers\kamati\WaalikwaController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ResendcardController;
 use App\Http\Controllers\ScancardController;
@@ -284,13 +281,6 @@ Route::middleware('auth')->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::resource('contribution-caption', ContributionCardCaptionController::class);
-
-    /*
-    |--------------------------------------------------------------------------
-    | Kamati management routes
-    |--------------------------------------------------------------------------
-    */
-    Route::resource('kamati', KamatiManagementController::class);
 });
 
 /*
@@ -352,23 +342,5 @@ Route::get('/storage-link', function () {
 
     return 'Storage link created successfully!';
 })->name('storage-link');
-
-/*
-|--------------------------------------------------------------------------
-| Kamati yetu routes
-|--------------------------------------------------------------------------
-*/
-Route::get('kamati-yetu/{id}', [KamatiController::class, 'kamatiyetu'])
-    ->name('kamati-yetu');
-
-/*
-|--------------------------------------------------------------------------
-| Waalikwa routes
-|--------------------------------------------------------------------------
-*/
-Route::resource('waalikwas', WaalikwaController::class);
-
-Route::post('get-waalikwa/{id}', [WaalikwaController::class, 'getWaalikwa'])
-    ->name('get-waalikwa');
 
 require __DIR__ . '/auth.php';

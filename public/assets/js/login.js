@@ -1,39 +1,45 @@
-document.getElementById('loginForm').addEventListener('submit', function (e) {
-    const button = document.getElementById('loginButton');
-    const originalText = button.textContent;
+document.addEventListener('DOMContentLoaded', function () {
+    const loginForm = document.getElementById('loginForm');
+    const loginButton = document.getElementById('loginButton');
 
-    // Add both loading and pulse effects
-    button.classList.add('btn-loading', 'btn-pulse');
+    if (loginForm && loginButton) {
+        loginForm.addEventListener('submit', function () {
+            const originalText = loginButton.textContent.trim();
 
-    // Create and show the loading dots
-    const loadingDots = document.createElement('span');
-    loadingDots.textContent = 'Signing in';
-    button.textContent = '';
-    button.appendChild(loadingDots);
+            loginButton.disabled = true;
+            loginButton.classList.add('btn-loading', 'btn-pulse');
 
-    // Animate the dots
-    let dots = 0;
-    const dotAnimation = setInterval(() => {
-        dots = (dots + 1) % 4;
-        loadingDots.textContent = 'Signing in' + '.'.repeat(dots);
-    }, 300);
+            const loadingText = document.createElement('span');
+            loadingText.textContent = 'Signing in';
 
-    // Restore button state after animation
-    setTimeout(() => {
-        clearInterval(dotAnimation);
-        button.classList.remove('btn-loading', 'btn-pulse');
-        button.textContent = originalText;
-    }, 2000);
-});
+            loginButton.textContent = '';
+            loginButton.appendChild(loadingText);
 
-// Add subtle hover effect to form inputs
-document.querySelectorAll('.form-control').forEach(input => {
-    input.addEventListener('focus', function () {
-        this.style.transition = 'all 0.3s ease';
-        this.style.boxShadow = '0 0 10px rgba(0,123,255,0.2)';
-    });
+            let dots = 0;
 
-    input.addEventListener('blur', function () {
-        this.style.boxShadow = '';
+            const dotAnimation = setInterval(function () {
+                dots = (dots + 1) % 4;
+                loadingText.textContent = 'Signing in' + '.'.repeat(dots);
+            }, 300);
+
+            loginButton.dataset.originalText = originalText;
+            loginButton.dataset.loadingInterval = dotAnimation;
+        });
+    }
+
+    window.addEventListener('pageshow', function () {
+        if (loginButton) {
+            loginButton.disabled = false;
+            loginButton.classList.remove('btn-loading', 'btn-pulse');
+
+            if (loginButton.dataset.originalText) {
+                loginButton.textContent = loginButton.dataset.originalText;
+            }
+
+            if (loginButton.dataset.loadingInterval) {
+                clearInterval(Number(loginButton.dataset.loadingInterval));
+                delete loginButton.dataset.loadingInterval;
+            }
+        }
     });
 });

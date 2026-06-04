@@ -1,90 +1,131 @@
-  .fade-in-up {
-        animation: fadeInUp 0.6s ease-out;
-    }
-    
-    @keyframes fadeInUp {
-        from {
-            opacity: 0;
-            transform: translateY(20px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
+:root {
+    --primary: #233F7E;
+    --primary-hover: #1D356A;
+    --accent: #F99A12;
+    --background: #F3F6FA;
+    --text: #1F2937;
+    --muted: #6B7280;
+    --border: #D1D5DB;
+    --white: #FFFFFF;
+    --danger: #DC2626;
+}
+
+body {
+    margin: 0;
+    background: var(--background);
+    font-family: Arial, sans-serif;
+}
+
+.login-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.login-card {
+    width: 100%;
+    max-width: 380px;
+    background: var(--white);
+    padding: 32px;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(11, 31, 58, 0.12);
+}
+
+.login-logo {
+    max-width: 210px;
+    width: 100%;
+}
+
+.form-label {
+    font-size: 14px;
+    color: var(--text);
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+
+.form-control {
+    width: 100%;
+    height: 46px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 14px;
+    color: var(--text);
+}
+
+.form-control:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(35, 63, 126, 0.12);
+    outline: none;
+}
+
+.form-control::placeholder {
+    color: #9CA3AF;
+}
+
+.is-invalid {
+    border-color: var(--danger) !important;
+}
+
+.invalid-feedback {
+    font-size: 13px;
+    color: var(--danger);
+    margin-top: 5px;
+}
+
+.btn-login {
+    width: 100%;
+    height: 46px;
+    border: none;
+    border-radius: 6px;
+    background: var(--primary);
+    color: var(--white);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+}
+
+.btn-login:hover {
+    background: var(--primary-hover);
+}
+
+.btn-login:disabled {
+    opacity: 0.75;
+    cursor: not-allowed;
+}
+
+.forgot-password {
+    text-align: left;
+    margin-top: 18px;
+}
+
+.forgot-password a {
+    color: var(--muted);
+    font-size: 14px;
+    text-decoration: none;
+}
+
+.forgot-password a:hover {
+    color: var(--primary);
+}
+
+.btn-pulse {
+    animation: pulse 1.3s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(35, 63, 126, 0.3);
     }
 
-    .btn-loading {
-        position: relative;
-        overflow: hidden;
-        pointer-events: none;
+    70% {
+        box-shadow: 0 0 0 10px rgba(35, 63, 126, 0);
     }
 
-    .btn-loading::before {
-        content: "";
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 0;
-        height: 0;
-        background: rgba(255, 255, 255, 0.3);
-        border-radius: 50%;
-        transform: translate(-50%, -50%);
-        animation: ripple 1s ease-out;
+    100% {
+        box-shadow: 0 0 0 0 rgba(35, 63, 126, 0);
     }
-
-    .btn-loading::after {
-        content: "";
-        position: absolute;
-        width: 100%;
-        height: 100%;
-        top: 0;
-        left: 0;
-        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-        animation: shimmer 1.5s infinite;
-    }
-
-    @keyframes ripple {
-        0% {
-            width: 0;
-            height: 0;
-            opacity: 0.5;
-        }
-        100% {
-            width: 500px;
-            height: 500px;
-            opacity: 0;
-        }
-    }
-
-    @keyframes shimmer {
-        0% {
-            transform: translateX(-100%);
-        }
-        100% {
-            transform: translateX(100%);
-        }
-    }
-
-    .btn-pulse {
-        animation: pulse 0.5s ease-out;
-    }
-
-    @keyframes pulse {
-        0% {
-            transform: scale(1);
-            box-shadow: 0 0 0 0 rgba(0,123,255, 0.7);
-        }
-        50% {
-            transform: scale(0.98);
-            box-shadow: 0 0 0 10px rgba(0,123,255, 0);
-        }
-        100% {
-            transform: scale(1);
-            box-shadow: 0 0 0 0 rgba(0,123,255, 0);
-        }
-    }
-
-    .form-control:focus {
-        transform: scale(1.02);
-        transition: transform 0.2s ease;
-    }
+}
