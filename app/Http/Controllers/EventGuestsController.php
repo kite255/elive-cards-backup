@@ -3,28 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Imports\eventGuestsImport;
-use App\Jobs\CreateCard;
-use App\Jobs\CreateQrcode;
 use App\Models\Event;
-use App\Models\GuestQrcode;
 use App\Models\EventGuest;
-use App\Models\GuestPdf;
-use App\Models\Qrcode as ModelsQrcode;
-use App\Models\SendWhatsappCard;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Maatwebsite\Excel\Facades\Excel;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
-use Illuminate\Support\Facades\File;
-use Barryvdh\DomPDF\Facade\Pdf;
-use Illuminate\Support\Facades\App;
-use Illuminate\Support\Facades\Bus;
-use App\Jobs\CreateQrcodeBatch;
-use App\Jobs\CreateCardBatch;
-use Illuminate\Bus\Batch;
-use Illuminate\Support\Facades\Log;
-use Throwable;
-use App\Jobs\ProcessGuestBatch;
 use RealRashid\SweetAlert\Facades\Alert;
 
 class EventGuestsController extends Controller
@@ -32,7 +15,10 @@ class EventGuestsController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index() {}
+    public function index()
+    {
+        //
+    }
 
     /**
      * Show the form for creating a new resource.
@@ -43,32 +29,46 @@ class EventGuestsController extends Controller
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Store guests from Excel file.
      */
-
-
     public function store(Request $request)
     {
         try {
-            $request->validate([
-                'guestExcelFile' => 'required'
-            ]);
+            $validated = $request->validate(
+                [
+                    'guestExcelFile' => 'required|file|mimes:xlsx,xls,csv',
+                    'event_id' => 'required',
+                ],
+                [
+                    'guestExcelFile.required' => 'Please choose an Excel file.',
+                    'guestExcelFile.file' => 'The uploaded file is invalid.',
+                    'guestExcelFile.mimes' => 'The file must be xlsx, xls, or csv.',
+                    'event_id.required' => 'Event is required.',
+                ]
+            );
 
             $guestExcelData = $request->file('guestExcelFile');
             $user_id = Auth::id();
-            $event_id = $request->event_id;
+            $event_id = $validated['event_id'];
 
             Excel::import(new eventGuestsImport($user_id, $event_id), $guestExcelData);
 
-            Alert::success('Excel file uploaded successfully', 'cards creation on progress');
+            Alert::success('Excel file uploaded successfully', 'Cards creation is in progress.');
+
             return redirect()->back();
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Alert::error('Validation Error', $e->validator->errors()->first());
+
+            return redirect()
+                ->back()
+                ->withErrors($e->validator)
+                ->withInput();
         } catch (\Exception $e) {
-            Alert::error('Error', 'make sure the excel file is in the correct format');
+            Alert::error('Error', 'Make sure the Excel file is in the correct format.');
+
             return redirect()->back();
         }
-
     }
-
 
     /**
      * Display the specified resource.
@@ -79,81 +79,136 @@ class EventGuestsController extends Controller
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * Show guest edit form.
      */
-     public function edit(string $id)
+    public function edit(string $id)
     {
         $id = decrypt($id);
-        $guest = EventGuest::find($id);
+
+        $guest = EventGuest::findOrFail($id);
+
         return view('venecardDashboard.eventCard.layoutSections.editguest', compact('guest'));
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update guest phone.
      */
     public function update(Request $request, string $id)
     {
-        $guest = EventGuest::find($id);
-        $guest->guest_phone = $request->guest_phone;
+        $id = decrypt($id);
+
+        $validated = $request->validate(
+            [
+                'guest_phone' => 'required|numeric|digits:10',
+            ],
+            [
+                'guest_phone.required' => 'Guest phone is required.',
+                'guest_phone.numeric' => 'Guest phone must contain numbers only.',
+                'guest_phone.digits' => 'Guest phone must be exactly 10 digits.',
+            ]
+        );
+
+        $guest = EventGuest::findOrFail($id);
+
+        $guest->guest_phone = ltrim($validated['guest_phone'], '0');
         $guest->save();
-        Alert::success($guest->guest_name, ' has been updated successfully');
+
+        Alert::success($guest->guest_name, 'has been updated successfully.');
+
         return redirect()->route('events.show', encrypt($guest->event_id));
     }
 
-
     /**
-     * Remove the specified resource from storage.
+     * Delete guest.
      */
     public function destroy(string $id)
     {
         $id = decrypt($id);
-        $guest = EventGuest::find($id);
+
+        $guest = EventGuest::findOrFail($id);
+        $eventId = $guest->event_id;
+        $guestName = $guest->guest_name;
+
         $guest->delete();
-        Alert::success($guest->guest_name, ' has been deleted successfully');
-        return redirect()->route('events.show', encrypt($guest->event_id));
+
+        Alert::success($guestName, 'has been deleted successfully.');
+
+        return redirect()->route('events.show', encrypt($eventId));
     }
 
-
+    /**
+     * Add one guest manually.
+     */
     public function addSingleGuest(Request $request, $eventId)
     {
         try {
-            $request->validate([
-                'guestName' => 'required',
-                'guestPhone' => 'required|numeric|digits:10',
-                'cardType' => 'required',
-                'groupSize' => 'required_if:cardType,GROUP',
-                 'note' => 'nullable',
-            ]);
+            $validated = $request->validate(
+                [
+                    'guestName' => 'required|string|max:255',
+                    'guestPhone' => 'required|numeric|digits:10',
+                    'cardType' => 'required|string|max:50',
+                    'groupSize' => 'required_if:cardType,GROUP|nullable|numeric|min:1|max:100',
+                    'note' => 'nullable|string|max:1000',
+                ],
+                [
+                    'guestName.required' => 'Guest name is required.',
+                    'guestPhone.required' => 'Guest phone is required.',
+                    'guestPhone.numeric' => 'Guest phone must contain numbers only.',
+                    'guestPhone.digits' => 'Guest phone must be exactly 10 digits.',
+                    'cardType.required' => 'Card type is required.',
+                    'groupSize.required_if' => 'Group size is required for group card.',
+                    'groupSize.numeric' => 'Group size must be a number.',
+                    'note.max' => 'Note must not exceed 1000 characters.',
+                ]
+            );
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Alert::error('Validation Error', $e->getMessage());
-            return redirect()->back();
+            Alert::error('Validation Error', $e->validator->errors()->first());
+
+            return redirect()
+                ->back()
+                ->withErrors($e->validator)
+                ->withInput();
         }
 
         $userId = Auth::id();
         $event_id = decrypt($eventId);
+
         $event = Event::find($event_id);
-        if(!$event){
-            Alert::error('Error', 'Event not found');
+
+        if (! $event) {
+            Alert::error('Error', 'Event not found.');
+
             return redirect()->back();
         }
+
         $guest = new EventGuest();
         $guest->user_id = $userId;
         $guest->event_id = $event_id;
-        $guest->guest_name = $request->guestName;
-        $guest->guest_phone = ltrim($request->guestPhone, '0');
-        $guest->card_type = $request->cardType === 'GROUP' ?  'WATU ' .$request->groupSize : $request->cardType;
-        $guest->note = $request->note;
+        $guest->guest_name = $validated['guestName'];
+        $guest->guest_phone = ltrim($validated['guestPhone'], '0');
 
-        // Generate a unique invitation code
+        $guest->card_type = $validated['cardType'] === 'GROUP'
+            ? 'WATU ' . ($validated['groupSize'] ?? 1)
+            : $validated['cardType'];
+
+        // Optional note
+        $guest->note = $validated['note'] ?? null;
+
+        // Generate unique invitation code per event
         do {
             $generatedCode = rand(100000, 999999);
+
             $exists = EventGuest::where('event_id', $event_id)
-                               ->where('invitation_code', $generatedCode)
-                               ->exists();
+                ->where('invitation_code', $generatedCode)
+                ->exists();
         } while ($exists);
+
         $guest->invitation_code = $generatedCode;
+
         $guest->save();
-        Alert::success( $request->guestName , ' has been added successfully');
+
+        Alert::success($validated['guestName'], 'has been added successfully.');
+
         return redirect()->back();
     }
 }

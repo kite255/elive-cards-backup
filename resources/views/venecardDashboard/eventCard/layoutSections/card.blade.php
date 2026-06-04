@@ -15,7 +15,39 @@
             $designHeight = 620;
 
             $eventCard = optional($event->eventcard);
-            $hasCard = ! empty($eventCard->card_name);
+
+            /*
+             * Live server storage fix:
+             * The database should store only a relative public disk path like:
+             * eventCardSamples/image-name.jpg
+             *
+             * The image is then served through:
+             * /storage/eventCardSamples/image-name.jpg
+             */
+            $cardPath = $eventCard->card_name ?? null;
+
+            if ($cardPath) {
+                $cardPath = trim($cardPath);
+                $cardPath = ltrim($cardPath, '/');
+                $cardPath = str_replace('\\\\', '/', $cardPath);
+                $cardPath = str_replace('\\', '/', $cardPath);
+
+                // Remove wrong prefixes if old records contain them.
+                $cardPath = preg_replace('#^(public/|storage/|app/public/)#', '', $cardPath);
+
+                // Compatibility for old wrong folder name.
+                $cardPath = str_replace('eventsCardSamples/', 'eventCardSamples/', $cardPath);
+            }
+
+            $hasCard = ! empty($cardPath);
+
+            $cardImageUrl = $hasCard
+                ? \Illuminate\Support\Facades\Storage::disk('public')->url($cardPath)
+                : null;
+
+            $fallbackCardImageUrl = $hasCard
+                ? asset('storage/' . $cardPath)
+                : null;
 
             $formAction = $hasCard
                 ? route('card.update', encrypt($event->eventcard->id))
@@ -207,7 +239,9 @@
                                 class="img-fluid card-preview-image"
                                 alt="Card Preview"
                                 @if ($hasCard)
-                                    src="{{ asset('storage/' . $eventCard->card_name) }}"
+                                    src="{{ $cardImageUrl }}"
+                                    data-fallback-src="{{ $fallbackCardImageUrl }}"
+                                    onerror="if (this.dataset.fallbackSrc && this.src !== this.dataset.fallbackSrc) { this.src = this.dataset.fallbackSrc; }"
                                 @endif
                             >
 
