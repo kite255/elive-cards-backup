@@ -4,27 +4,46 @@ namespace App\Listeners;
 
 use App\Models\SendMessageCard;
 use Bryceandy\Beem\Events\SmsDeliveryReportReceived;
+use Illuminate\Support\Facades\Log;
 
 class ProcessDeliveryReport
 {
-    /**
-     * Handle the event.
-     *
-     * @param  SmsDeliveryReportReceived $event
-     * @return \Illuminate\Http\JsonResponse
-     */
     public function handle(SmsDeliveryReportReceived $event)
     {
-        $requestId = $event->request['request_id'];
-        $recipientId = $event->request['recipient_id'];
-        $mobileNumber = $event->request['dest_addr'];
-        $status = $event->request['status'];
+        $payload = $event->request ?? [];
 
-        $deliveryReport = SendMessageCard::where('request_id',$requestId);
+        $requestId = $payload['request_id'] ?? null;
+        $recipientId = $payload['recipient_id'] ?? null;
+        $mobileNumber = $payload['dest_addr'] ?? null;
+        $status = $payload['status'] ?? null;
+
+        Log::info('Beem SMS delivery report received.', [
+            'request_id' => $requestId,
+            'recipient_id' => $recipientId,
+            'mobile_number' => $mobileNumber,
+            'status' => $status,
+        ]);
+
+        if (! $requestId) {
+            return response()->json(['success' => false, 'message' => 'Missing request_id'], 200);
+        }
+
+        $deliveryReport = SendMessageCard::where('request_id', $requestId)->first();
+
+        if (! $deliveryReport) {
+            Log::warning('No SendMessageCard record found for Beem request_id.', [
+                'request_id' => $requestId,
+                'recipient_id' => $recipientId,
+                'mobile_number' => $mobileNumber,
+                'status' => $status,
+            ]);
+
+            return response()->json(['success' => false, 'message' => 'Record not found'], 200);
+        }
+
         $deliveryReport->delivery_status = $status;
         $deliveryReport->save();
-        
-        // After processing this report, send back an OK response to Beem
-        return response()->json([]);
+
+        return response()->json(['success' => true]);
     }
 }

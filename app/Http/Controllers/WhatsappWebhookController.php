@@ -13,20 +13,14 @@ class WhatsappWebhookController extends Controller
      * WhatsApp webhook handler.
      *
      * GET  = Meta webhook verification.
-     * POST = Receive WhatsApp delivery status updates.
+     * POST = Receive WhatsApp delivery status updates and replies.
      */
     public function handleWebhook(Request $request)
     {
-        /**
-         * 1. Webhook verification from Meta
-         */
         if ($request->isMethod('GET')) {
             return $this->verifyWebhook($request);
         }
 
-        /**
-         * 2. Webhook status/messages from WhatsApp
-         */
         if ($request->isMethod('POST')) {
             return $this->processWebhook($request);
         }
@@ -47,7 +41,6 @@ class WhatsappWebhookController extends Controller
 
         if ($mode === 'subscribe' && $token === $verifyToken) {
             Log::info('WhatsApp webhook verified successfully.');
-
             return response($challenge, 200);
         }
 
@@ -86,19 +79,12 @@ class WhatsappWebhookController extends Controller
             foreach ($changes as $change) {
                 $value = $change['value'] ?? [];
 
-                /**
-                 * Handle message delivery statuses:
-                 * sent, delivered, read, failed
-                 */
                 $statuses = $value['statuses'] ?? [];
 
                 foreach ($statuses as $statusData) {
                     $this->handleStatusUpdate($statusData);
                 }
 
-                /**
-                 * Handle incoming messages/replies from invitees.
-                 */
                 $messages = $value['messages'] ?? [];
 
                 foreach ($messages as $messageData) {
@@ -111,28 +97,19 @@ class WhatsappWebhookController extends Controller
     }
 
     /**
-     * Save/log WhatsApp status updates.
+     * Save WhatsApp delivery status updates.
      */
     private function handleStatusUpdate(array $statusData): void
     {
         $messageId = $statusData['id'] ?? null;
         $status = $statusData['status'] ?? null;
         $recipientId = $statusData['recipient_id'] ?? null;
+
         $timestamp = isset($statusData['timestamp'])
             ? date('Y-m-d H:i:s', (int) $statusData['timestamp'])
             : now()->format('Y-m-d H:i:s');
 
-        $errorMessage = null;
-
-        if (! empty($statusData['errors'][0])) {
-            $error = $statusData['errors'][0];
-
-            $errorMessage = trim(
-                ($error['code'] ?? '') . ' ' .
-                ($error['title'] ?? '') . ' ' .
-                ($error['message'] ?? '')
-            );
-        }
+        $errorMessage = $this->extractErrorMessage($statusData);
 
         Log::info('WhatsApp message status update.', [
             'message_id' => $messageId,
@@ -142,65 +119,79 @@ class WhatsappWebhookController extends Controller
             'error' => $errorMessage,
         ]);
 
-        /**
-         * Optional database update.
-         * This tries to update send_whatsapp_cards if your table has matching columns.
-         */
-        try {
-            if (! class_exists(SendWhatsappCard::class)) {
-                return;
-            }
+        if (! $messageId) {
+            Log::warning('WhatsApp webhook status missing message ID.', [
+                'status_data' => $statusData,
+            ]);
 
+            return;
+        }
+
+        try {
             if (! Schema::hasTable('send_whatsapp_cards')) {
                 return;
             }
 
-            $query = SendWhatsappCard::query();
-
-            /**
-             * Match by WhatsApp message ID.
-             * Your old code used whatsapp_sender_id to store the WhatsApp message ID.
+            /*
+             * IMPORTANT:
+             * WhatsApp webhook "id" is the WhatsApp message ID.
+             * In your table, it is stored in send_whatsapp_cards.message_id.
              */
-            if (Schema::hasColumn('send_whatsapp_cards', 'whatsapp_sender_id')) {
-                $query->where('whatsapp_sender_id', $messageId);
-            } elseif (Schema::hasColumn('send_whatsapp_cards', 'whatsapp_message_id')) {
-                $query->where('whatsapp_message_id', $messageId);
-            } else {
-                return;
-            }
+            $record = SendWhatsappCard::where('message_id', $messageId)->first();
 
-            $record = $query->first();
+            /*
+             * Fallback: if older records accidentally stored message ID in another column.
+             */
+            if (! $record && Schema::hasColumn('send_whatsapp_cards', 'whatsapp_message_id')) {
+                $record = SendWhatsappCard::where('whatsapp_message_id', $messageId)->first();
+            }
 
             if (! $record) {
                 Log::warning('No SendWhatsappCard record found for webhook message ID.', [
                     'message_id' => $messageId,
                     'status' => $status,
+                    'recipient_id' => $recipientId,
                 ]);
 
                 return;
             }
 
-            if (Schema::hasColumn('send_whatsapp_cards', 'status')) {
-                $record->status = $status;
+            if (Schema::hasColumn('send_whatsapp_cards', 'delivery_status')) {
+                $record->delivery_status = $status;
             }
 
-            if (Schema::hasColumn('send_whatsapp_cards', 'whatsapp_status')) {
-                $record->whatsapp_status = $status;
+            if (Schema::hasColumn('send_whatsapp_cards', 'delivery_status_time')) {
+                $record->delivery_status_time = $timestamp;
             }
 
-            if (Schema::hasColumn('send_whatsapp_cards', 'failed_reason') && $errorMessage) {
-                $record->failed_reason = $errorMessage;
+            /*
+             * Keep sent_status as accepted after API accepted it.
+             * But if webhook says failed, mark it failed.
+             */
+            if ($status === 'failed' && Schema::hasColumn('send_whatsapp_cards', 'sent_status')) {
+                $record->sent_status = 'failed';
             }
 
-            if (Schema::hasColumn('send_whatsapp_cards', 'delivered_at') && $status === 'delivered') {
-                $record->delivered_at = $timestamp;
-            }
-
-            if (Schema::hasColumn('send_whatsapp_cards', 'read_at') && $status === 'read') {
-                $record->read_at = $timestamp;
+            /*
+             * Store failed reason in available column.
+             * Your table has reply_message, so we use it if error_message does not exist.
+             */
+            if ($errorMessage) {
+                if (Schema::hasColumn('send_whatsapp_cards', 'error_message')) {
+                    $record->error_message = $errorMessage;
+                } elseif (Schema::hasColumn('send_whatsapp_cards', 'reply_message')) {
+                    $record->reply_message = $errorMessage;
+                }
             }
 
             $record->save();
+
+            Log::info('SendWhatsappCard webhook status updated successfully.', [
+                'send_whatsapp_card_id' => $record->id,
+                'message_id' => $messageId,
+                'status' => $status,
+                'error' => $errorMessage,
+            ]);
         } catch (\Throwable $e) {
             Log::error('Failed to update WhatsApp status from webhook.', [
                 'message_id' => $messageId,
@@ -211,12 +202,13 @@ class WhatsappWebhookController extends Controller
     }
 
     /**
-     * Log incoming WhatsApp replies.
+     * Log and save incoming WhatsApp replies.
      */
     private function handleIncomingMessage(array $messageData): void
     {
         $from = $messageData['from'] ?? null;
         $messageId = $messageData['id'] ?? null;
+
         $timestamp = isset($messageData['timestamp'])
             ? date('Y-m-d H:i:s', (int) $messageData['timestamp'])
             : now()->format('Y-m-d H:i:s');
@@ -229,5 +221,73 @@ class WhatsappWebhookController extends Controller
             'text' => $text,
             'timestamp' => $timestamp,
         ]);
+
+        if (! $from || ! $text) {
+            return;
+        }
+
+        try {
+            if (! Schema::hasTable('send_whatsapp_cards')) {
+                return;
+            }
+
+            /*
+             * Match reply by recipient phone number.
+             * whatsapp_sender_id usually stores the receiver phone number, e.g. 255670461644.
+             */
+            $record = SendWhatsappCard::where('whatsapp_sender_id', $from)
+                ->latest()
+                ->first();
+
+            if (! $record) {
+                Log::warning('No SendWhatsappCard record found for incoming reply phone.', [
+                    'from' => $from,
+                    'message_id' => $messageId,
+                    'text' => $text,
+                ]);
+
+                return;
+            }
+
+            if (Schema::hasColumn('send_whatsapp_cards', 'reply_message')) {
+                $record->reply_message = $text;
+            }
+
+            if (Schema::hasColumn('send_whatsapp_cards', 'delivery_status_time')) {
+                $record->delivery_status_time = $timestamp;
+            }
+
+            $record->save();
+
+            Log::info('Incoming WhatsApp reply saved successfully.', [
+                'send_whatsapp_card_id' => $record->id,
+                'from' => $from,
+                'reply' => $text,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to save incoming WhatsApp reply.', [
+                'from' => $from,
+                'message_id' => $messageId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Extract readable WhatsApp error message.
+     */
+    private function extractErrorMessage(array $statusData): ?string
+    {
+        if (empty($statusData['errors'][0])) {
+            return null;
+        }
+
+        $error = $statusData['errors'][0];
+
+        return trim(
+            ($error['code'] ?? '') . ' ' .
+            ($error['title'] ?? '') . ' ' .
+            ($error['message'] ?? '')
+        ) ?: null;
     }
 }
