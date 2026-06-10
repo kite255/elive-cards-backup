@@ -1,5 +1,6 @@
-<div class="card-layout-wrapper">
-    @if ($errors->any())
+<div class="row">
+    <div class="col-lg-7 col-md-12">
+        @if ($errors->any())
             <div class="alert alert-danger">
                 <ul class="mb-0">
                     @foreach ($errors->all() as $error)
@@ -17,10 +18,10 @@
 
             /*
              * Permanent image path fix:
-             * - New records may use image
-             * - Old records use card_name
-             * - Both are supported
-             * - Removes accidental "storage/" prefix to avoid /storage/storage/...
+             * - New records may use image.
+             * - Old records use card_name.
+             * - Removes accidental storage/ prefix to avoid /storage/storage/...
+             * - Adds updated_at version to prevent browser cache after saving.
              */
             $cardImagePath = $eventCard->image ?: $eventCard->card_name;
 
@@ -29,7 +30,15 @@
             }
 
             $hasCard = ! empty($cardImagePath);
-            $cardImageUrl = $hasCard ? asset('storage/' . $cardImagePath) : null;
+            $cardImageUrl = null;
+
+            if ($hasCard) {
+                $cardImageUrl = asset('storage/' . $cardImagePath);
+
+                if (! empty($eventCard->updated_at)) {
+                    $cardImageUrl .= '?v=' . $eventCard->updated_at->timestamp;
+                }
+            }
 
             $formAction = $hasCard
                 ? route('card.update', encrypt($event->eventcard->id))
@@ -88,75 +97,15 @@
         @endphp
 
         <style>
-            :root {
-                --elive-primary: #233F7E;
-                --elive-accent: #F99A12;
-                --elive-bg: #F5F7FB;
-                --elive-card: #FFFFFF;
-                --elive-border: #E5E7EB;
-                --elive-muted: #64748B;
-                --elive-text: #111827;
-                --elive-soft: #F8FAFC;
-                --elive-shadow: 0 10px 28px rgba(15, 23, 42, 0.07);
-                --elive-radius: 14px;
-            }
-
-            .card-layout-wrapper {
-                width: 100%;
-                max-width: 1480px;
-                margin: 0 auto;
-                padding: 4px 6px 28px;
-            }
-
-            .card-main-grid {
-                display: grid;
-                grid-template-columns: minmax(520px, 1fr) minmax(520px, 1fr);
-                gap: 22px;
-                align-items: start;
-            }
-
-            .card-preview-panel,
-            .card-settings-panel,
-            .messages-panel {
-                background: var(--elive-card);
-                border: 1px solid var(--elive-border);
-                border-radius: var(--elive-radius);
-                box-shadow: var(--elive-shadow);
-            }
-
-            .card-preview-panel {
-                padding: 18px;
-            }
-
-            .card-preview-panel h6,
-            .card-settings-panel h6,
-            .messages-panel > h6 {
-                color: var(--elive-text);
-                font-size: 15px;
-                font-weight: 700;
-                letter-spacing: 0.01em;
-                margin-bottom: 14px !important;
-            }
-
-            .card-preview-panel > .mb-4 {
-                margin-bottom: 0 !important;
-            }
-
             .card-designer-viewport {
                 width: 100%;
                 max-width: 100%;
-                min-height: 700px;
                 overflow: auto;
-                padding: 18px;
-                background:
-                    linear-gradient(135deg, rgba(35, 63, 126, 0.045), rgba(249, 154, 18, 0.035)),
-                    var(--elive-soft);
-                border: 1px solid var(--elive-border);
-                border-radius: 12px;
+                padding: 12px;
+                background: #f8fafc;
+                border: 1px solid #e5e7eb;
+                border-radius: 10px;
                 text-align: center;
-                display: flex;
-                align-items: flex-start;
-                justify-content: center;
             }
 
             .card-designer-stage {
@@ -172,10 +121,9 @@
                 height: {{ $designHeight }}px;
                 overflow: hidden;
                 background: #ffffff;
-                border: 1px dashed #CBD5E1;
-                border-radius: 10px;
+                border: 1px dashed #cbd5e1;
+                border-radius: 8px;
                 line-height: normal;
-                box-shadow: 0 12px 34px rgba(15, 23, 42, 0.10);
             }
 
             .card-preview-image {
@@ -188,6 +136,27 @@
                 display: {{ $hasCard ? 'block' : 'none' }};
             }
 
+            .missing-card-image-notice {
+                position: absolute;
+                inset: 14px;
+                z-index: 2;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+                padding: 18px;
+                border: 1px dashed #f59e0b;
+                border-radius: 8px;
+                background: #fffbeb;
+                color: #92400e;
+                font-size: 13px;
+                line-height: 1.4;
+            }
+
+            .missing-card-image-notice.d-none {
+                display: none !important;
+            }
+
             .designer-placeholder {
                 position: absolute;
                 z-index: 5;
@@ -195,9 +164,9 @@
                 user-select: none;
                 touch-action: none;
                 transform: translate(-50%, -50%);
-                border: 1px dashed rgba(37, 99, 235, 0.65);
-                background: rgba(255, 255, 255, 0.15) !important;
-                padding: 0 2px;
+                border: 1px dashed rgba(37, 99, 235, 0.55);
+                background: transparent !important;
+                padding: 0;
                 line-height: 1.2;
                 white-space: nowrap;
                 text-align: center;
@@ -209,7 +178,7 @@
 
             .card-type-placeholder {
                 font-weight: 700;
-                border-color: rgba(22, 163, 74, 0.75);
+                border-color: rgba(22, 163, 74, 0.65);
             }
 
             .qr-placeholder {
@@ -254,172 +223,9 @@
                 border: 1px solid var(--qr-main-color);
             }
 
-            .card-preview-panel .d-flex.gap-2 {
-                padding-top: 12px;
-                border-top: 1px solid var(--elive-border);
-                margin-top: 16px !important;
-            }
-
-            .card-preview-panel small.text-muted {
-                color: var(--elive-muted) !important;
-                font-size: 12px;
-                line-height: 1.5;
-            }
-
-            .card-settings-panel {
-                padding: 18px;
-                display: grid;
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-                gap: 14px;
-            }
-
-            .card-settings-panel > .mb-4,
-            .card-settings-panel > .mb-2 {
-                background: var(--elive-soft);
-                border: 1px solid var(--elive-border);
-                border-radius: 12px;
-                padding: 14px;
-                margin-bottom: 0 !important;
-            }
-
-            .card-settings-panel > .mb-4:nth-of-type(3),
-            .card-settings-panel > .mb-2,
-            .card-settings-panel > .d-flex {
-                grid-column: 1 / -1;
-            }
-
-            .card-settings-panel .form-label {
-                font-size: 12px;
-                font-weight: 600;
-                color: #475569;
-                margin-bottom: 5px;
-            }
-
-            .card-settings-panel .form-control,
-            .card-settings-panel .form-select {
-                border-radius: 9px;
-                border-color: #D8DEE8;
-                min-height: 42px;
-                font-size: 14px;
-            }
-
-            .card-settings-panel input[readonly] {
-                background: #EEF2F7;
-                color: #334155;
-            }
-
-            .card-settings-panel .form-control-color {
-                height: 40px;
-                padding: 4px;
-                background: #ffffff;
-                cursor: pointer;
-            }
-
-            .card-settings-panel .d-flex.gap-2 {
-                justify-content: flex-end;
-                align-items: center;
-                margin-top: 2px !important;
-                margin-bottom: 0 !important;
-                padding-top: 4px;
-            }
-
-            .btn {
-                border-radius: 9px;
-                font-weight: 600;
-            }
-
-            .btn-primary {
-                background: var(--elive-primary);
-                border-color: var(--elive-primary);
-            }
-
-            .btn-primary:hover {
-                background: #1D356A;
-                border-color: #1D356A;
-            }
-
-            .messages-panel {
-                margin-top: 22px;
-                padding: 18px;
-            }
-
-            .messages-panel > h6 {
-                padding-bottom: 12px;
-                border-bottom: 1px solid var(--elive-border);
-            }
-
-            .sms-sections {
-                display: grid;
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-                gap: 18px;
-                margin-top: 0 !important;
-            }
-
-            .sms-sections .card {
-                margin-bottom: 0 !important;
-                height: 100%;
-                border: 1px solid var(--elive-border);
-                border-radius: 12px;
-                box-shadow: none !important;
-                overflow: hidden;
-            }
-
             .sms-side-card .card-header {
-                font-weight: 700;
-                color: var(--elive-primary);
-                background: #F8FAFC;
-                border-bottom: 1px solid var(--elive-border);
-                padding: 12px 14px;
-            }
-
-            .sms-side-card .card-body {
-                padding: 14px;
-            }
-
-            .sms-side-card textarea {
-                width: 100%;
-                min-height: 125px;
-                resize: vertical;
-                border-radius: 10px;
-                border-color: #D8DEE8;
-                font-size: 14px;
-                line-height: 1.55;
-            }
-
-            .sms-side-card button.w-100 {
-                min-height: 40px;
-            }
-
-            @media (max-width: 1200px) {
-                .card-main-grid {
-                    grid-template-columns: 1fr;
-                }
-
-                .card-settings-panel {
-                    grid-template-columns: repeat(2, minmax(0, 1fr));
-                }
-            }
-
-            @media (max-width: 768px) {
-                .card-layout-wrapper {
-                    padding: 0 0 24px;
-                }
-
-                .card-settings-panel,
-                .sms-sections {
-                    grid-template-columns: 1fr;
-                }
-
-                .card-designer-viewport {
-                    min-height: 0;
-                    padding: 12px;
-                }
-
-                .card-preview-panel,
-                .card-settings-panel,
-                .messages-panel {
-                    padding: 14px;
-                }
+                font-weight: 600;
+                background: #ffffff;
             }
         </style>
 
@@ -432,20 +238,6 @@
 
             <input type="hidden" name="event_id" value="{{ $event->id }}">
 
-
-            <input type="hidden" id="guestNameX" name="guestNameX" value="{{ $guestX }}">
-            <input type="hidden" id="guestNameY" name="guestNameY" value="{{ $guestY }}">
-            <input type="hidden" id="cardTypeX" name="cardTypeX" value="{{ $cardTypeX }}">
-            <input type="hidden" id="cardTypeY" name="cardTypeY" value="{{ $cardTypeY }}">
-            <input type="hidden" id="qrCodeX" name="qrCodeX" value="{{ $qrX }}">
-            <input type="hidden" id="qrCodeY" name="qrCodeY" value="{{ $qrY }}">
-            <input type="hidden" id="qrCodeSize" name="qrCodeSize" value="{{ $qrSize }}">
-            <input type="hidden" id="qrcodePosition" name="qrcodePosition" value="{{ $qrPosition }}">
-            <input type="hidden" id="guestCardtypeBackgroundColor" name="guestCardtypeBackgroundColor" value="transparent">
-
-
-            <div class="card-main-grid">
-                <div class="card-preview-panel">
             <div class="mb-4">
                 <h6 class="fw-bold mb-3">Card Image</h6>
 
@@ -461,7 +253,15 @@
                                 @if ($cardImageUrl)
                                     src="{{ $cardImageUrl }}"
                                 @endif
+                                onerror="this.style.display='none'; document.getElementById('missingCardImageNotice')?.classList.remove('d-none');"
                             >
+
+                            <div
+                                id="missingCardImageNotice"
+                                class="missing-card-image-notice {{ $hasCard ? 'd-none' : '' }}"
+                            >
+                                Card image cannot be opened publicly. Re-upload the card image or recreate the storage link.
+                            </div>
 
                             <div
                                 id="guestNamePlaceholder"
@@ -530,10 +330,16 @@
                 </small>
             </div>
 
+            <input type="hidden" id="guestNameX" name="guestNameX" value="{{ $guestX }}">
+            <input type="hidden" id="guestNameY" name="guestNameY" value="{{ $guestY }}">
+            <input type="hidden" id="cardTypeX" name="cardTypeX" value="{{ $cardTypeX }}">
+            <input type="hidden" id="cardTypeY" name="cardTypeY" value="{{ $cardTypeY }}">
+            <input type="hidden" id="qrCodeX" name="qrCodeX" value="{{ $qrX }}">
+            <input type="hidden" id="qrCodeY" name="qrCodeY" value="{{ $qrY }}">
+            <input type="hidden" id="qrCodeSize" name="qrCodeSize" value="{{ $qrSize }}">
+            <input type="hidden" id="qrcodePosition" name="qrcodePosition" value="{{ $qrPosition }}">
+            <input type="hidden" id="guestCardtypeBackgroundColor" name="guestCardtypeBackgroundColor" value="transparent">
 
-                </div>
-
-                <div class="card-settings-panel">
             <div class="mb-4">
                 <h6 class="fw-bold mb-3">Guest Name Settings</h6>
 
@@ -658,14 +464,11 @@
                     Reset Positions
                 </button>
             </div>
-
-                </div>
-            </div>
         </form>
+    </div>
 
-        <div class="messages-panel">
-            <h6 class="fw-bold mb-3">Message Settings</h6>
-<div class="sms-sections">
+    <div class="col-lg-5 col-md-12">
+        <div class="sms-sections mt-4">
             <div class="card mb-4 shadow-sm sms-side-card">
                 <div class="card-header">
                     Card Message
@@ -679,7 +482,7 @@
 
                         <input type="hidden" value="{{ encrypt($event->id) }}" name="event_id" readonly>
 
-                        <textarea name="SMS_card" class="form-control" rows="6" placeholder="{{ $defaultCardMessage }}">{{ old('SMS_card', $smsCard->SMS_card ?? '') }}</textarea>
+                        <textarea name="SMS_card" class="form-control" rows="6" placeholder="{{ $defaultCardMessage }}">{{ old('SMS_card', $smsCard->SMS_card ?? $defaultCardMessage) }}</textarea>
 
                         <div class="mt-3">
                             <button class="btn {{ $smsCard ? 'btn-info' : 'btn-success' }} w-100">
@@ -703,7 +506,7 @@
 
                         <input type="hidden" value="{{ encrypt($event->id) }}" name="event_id" readonly>
 
-                        <textarea name="SMS_reminder" class="form-control" rows="4" placeholder="{{ $defaultReminderMessage }}">{{ old('SMS_reminder', $smsReminder->SMS_reminder ?? '') }}</textarea>
+                        <textarea name="SMS_reminder" class="form-control" rows="4" placeholder="{{ $defaultReminderMessage }}">{{ old('SMS_reminder', $smsReminder->SMS_reminder ?? $defaultReminderMessage) }}</textarea>
 
                         <div class="mt-3">
                             <button class="btn {{ $smsReminder ? 'btn-info' : 'btn-success' }} w-100">
@@ -727,7 +530,7 @@
 
                         <input type="hidden" value="{{ encrypt($event->id) }}" name="event_id" readonly>
 
-                        <textarea name="SMS_welcoming" class="form-control" rows="4" placeholder="{{ $defaultWelcomeMessage }}">{{ old('SMS_welcoming', $smsWelcoming->SMS_welcoming ?? '') }}</textarea>
+                        <textarea name="SMS_welcoming" class="form-control" rows="4" placeholder="{{ $defaultWelcomeMessage }}">{{ old('SMS_welcoming', $smsWelcoming->SMS_welcoming ?? $defaultWelcomeMessage) }}</textarea>
 
                         <div class="mt-3">
                             <button class="btn {{ $smsWelcoming ? 'btn-info' : 'btn-success' }} w-100">
@@ -751,7 +554,7 @@
 
                         <input type="hidden" value="{{ encrypt($event->id) }}" name="event_id" readonly>
 
-                        <textarea name="SMS_thankyou" class="form-control" rows="4" placeholder="{{ $defaultThankYouMessage }}">{{ old('SMS_thankyou', $smsThankyou->SMS_thankyou ?? '') }}</textarea>
+                        <textarea name="SMS_thankyou" class="form-control" rows="4" placeholder="{{ $defaultThankYouMessage }}">{{ old('SMS_thankyou', $smsThankyou->SMS_thankyou ?? $defaultThankYouMessage) }}</textarea>
 
                         <div class="mt-3">
                             <button class="btn {{ $smsThankyou ? 'btn-info' : 'btn-success' }} w-100">
@@ -762,8 +565,7 @@
                 </div>
             </div>
         </div>
-    
-        </div>
+    </div>
 </div>
 
 <script>
@@ -829,6 +631,11 @@ document.addEventListener('DOMContentLoaded', function () {
             const reader = new FileReader();
 
             reader.onload = function (event) {
+                const missingNotice = document.getElementById('missingCardImageNotice');
+                if (missingNotice) {
+                    missingNotice.classList.add('d-none');
+                }
+
                 previewImage.src = event.target.result;
                 previewImage.style.display = 'block';
                 previewImage.onload = fitWholeCardInView;
