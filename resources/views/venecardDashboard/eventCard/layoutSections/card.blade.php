@@ -14,7 +14,22 @@
             $designHeight = 620;
 
             $eventCard = optional($event->eventcard);
-            $hasCard = ! empty($eventCard->card_name);
+
+            /*
+             * Permanent image path fix:
+             * - New records may use image
+             * - Old records use card_name
+             * - Both are supported
+             * - Removes accidental "storage/" prefix to avoid /storage/storage/...
+             */
+            $cardImagePath = $eventCard->image ?: $eventCard->card_name;
+
+            if (! empty($cardImagePath)) {
+                $cardImagePath = ltrim(str_replace('storage/', '', $cardImagePath), '/\\');
+            }
+
+            $hasCard = ! empty($cardImagePath);
+            $cardImageUrl = $hasCard ? asset('storage/' . $cardImagePath) : null;
 
             $formAction = $hasCard
                 ? route('card.update', encrypt($event->eventcard->id))
@@ -443,8 +458,8 @@
                                 id="previewImage"
                                 class="img-fluid card-preview-image"
                                 alt="Card Preview"
-                                @if ($hasCard)
-                                    src="{{ asset('storage/' . $eventCard->card_name) }}"
+                                @if ($cardImageUrl)
+                                    src="{{ $cardImageUrl }}"
                                 @endif
                             >
 
