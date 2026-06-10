@@ -28,17 +28,16 @@ class ExelSampleDownloadController extends Controller
                         'name',
                         'phone',
                         'card_type',
-                        'category',
-                        'table_number',
+                        'note',
                     ];
                 }
 
                 public function array(): array
                 {
                     return [
-                        ['Guest 1', '255768461644', 'SINGLE', 'Harusi', 'A1'],
-                        ['Guest 2', '255713789845', 'DOUBLE', 'Harusi', 'A2'],
-                        ['Guest 3', '255676089011', 'FAMILY', 'Harusi', 'A3'],
+                        ['Guest 1', '768461644', 'SINGLE', ''],
+                        ['Guest 2', '777792017', 'DOUBLE', ''],
+                        ['Guest 3', '745939140', 'GROUP', ''],
                     ];
                 }
             },
@@ -71,9 +70,9 @@ class ExelSampleDownloadController extends Controller
                 public function array(): array
                 {
                     return [
-                        ['Guest 1', '255768461644', 'Habari Guest 1, karibu kwenye tukio letu.'],
-                        ['Guest 2', '255713789845', 'Habari Guest 2, tunakukumbusha kuhudhuria tukio.'],
-                        ['Guest 3', '255676089011', 'Habari Guest 3, asante kwa ushiriki wako.'],
+                        ['Guest 1', '768461644', 'Habari Guest 1, karibu kwenye tukio letu.'],
+                        ['Guest 2', '777792017', 'Habari Guest 2, tunakukumbusha kuhudhuria tukio.'],
+                        ['Guest 3', '745939140', 'Habari Guest 3, asante kwa ushiriki wako.'],
                     ];
                 }
             },
