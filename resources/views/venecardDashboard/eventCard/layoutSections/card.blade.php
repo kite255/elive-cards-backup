@@ -17,28 +17,24 @@
             $eventCard = optional($event->eventcard);
 
             /*
-             * Permanent image path fix:
-             * - New records may use image.
-             * - Old records use card_name.
-             * - Removes accidental storage/ prefix to avoid /storage/storage/...
-             * - Adds updated_at version to prevent browser cache after saving.
+             * Permanent card image fix:
+             * - New records use image
+             * - Old records use card_name
+             * - Remove accidental storage/public prefixes
+             * - Add cache buster so browser does not keep an old broken image after save
              */
             $cardImagePath = $eventCard->image ?: $eventCard->card_name;
 
             if (! empty($cardImagePath)) {
-                $cardImagePath = ltrim(str_replace('storage/', '', $cardImagePath), '/\\');
+                $cardImagePath = str_replace('\\', '/', $cardImagePath);
+                $cardImagePath = ltrim($cardImagePath, '/');
+                $cardImagePath = preg_replace('#^(public/)?storage/#', '', $cardImagePath);
             }
 
             $hasCard = ! empty($cardImagePath);
-            $cardImageUrl = null;
-
-            if ($hasCard) {
-                $cardImageUrl = asset('storage/' . $cardImagePath);
-
-                if (! empty($eventCard->updated_at)) {
-                    $cardImageUrl .= '?v=' . $eventCard->updated_at->timestamp;
-                }
-            }
+            $cardImageUrl = $hasCard
+                ? asset('storage/' . $cardImagePath) . '?v=' . optional($eventCard->updated_at)->timestamp
+                : null;
 
             $formAction = $hasCard
                 ? route('card.update', encrypt($event->eventcard->id))
@@ -133,28 +129,7 @@
                 height: {{ $designHeight }}px;
                 object-fit: fill;
                 z-index: 1;
-                display: {{ $hasCard ? 'block' : 'none' }};
-            }
-
-            .missing-card-image-notice {
-                position: absolute;
-                inset: 14px;
-                z-index: 2;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                text-align: center;
-                padding: 18px;
-                border: 1px dashed #f59e0b;
-                border-radius: 8px;
-                background: #fffbeb;
-                color: #92400e;
-                font-size: 13px;
-                line-height: 1.4;
-            }
-
-            .missing-card-image-notice.d-none {
-                display: none !important;
+                display: {{ $cardImageUrl ? 'block' : 'none' }};
             }
 
             .designer-placeholder {
@@ -253,14 +228,12 @@
                                 @if ($cardImageUrl)
                                     src="{{ $cardImageUrl }}"
                                 @endif
-                                onerror="this.style.display='none'; document.getElementById('missingCardImageNotice')?.classList.remove('d-none');"
+                                onerror="this.style.display='none'; document.getElementById('cardImageWarning')?.classList.remove('d-none');"
+                                onload="this.style.display='block'; document.getElementById('cardImageWarning')?.classList.add('d-none');"
                             >
 
-                            <div
-                                id="missingCardImageNotice"
-                                class="missing-card-image-notice {{ $hasCard ? 'd-none' : '' }}"
-                            >
-                                Card image cannot be opened publicly. Re-upload the card image or recreate the storage link.
+                            <div id="cardImageWarning" class="d-none position-absolute top-50 start-50 translate-middle text-center text-danger px-3" style="z-index: 6; font-size: 13px; max-width: 320px;">
+                                Card image cannot be opened publicly. Recreate storage link or re-upload the image.
                             </div>
 
                             <div
@@ -631,11 +604,6 @@ document.addEventListener('DOMContentLoaded', function () {
             const reader = new FileReader();
 
             reader.onload = function (event) {
-                const missingNotice = document.getElementById('missingCardImageNotice');
-                if (missingNotice) {
-                    missingNotice.classList.add('d-none');
-                }
-
                 previewImage.src = event.target.result;
                 previewImage.style.display = 'block';
                 previewImage.onload = fitWholeCardInView;
@@ -738,6 +706,16 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 if (!response.ok) {
                     throw new Error('Save failed');
+                }
+
+                const contentType = response.headers.get('content-type') || '';
+                if (contentType.includes('application/json')) {
+                    const result = await response.json();
+
+                    if (result.image_url && previewImage) {
+                        previewImage.src = result.image_url;
+                        previewImage.style.display = 'block';
+                    }
                 }
 
                 window.location.href = downloadUrl;
