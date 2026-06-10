@@ -80,12 +80,14 @@ class EventCardController extends Controller
         $eventCard->event_id = $validated['event_id'];
 
         if ($request->hasFile('image')) {
+            $this->syncPublicStorageLink();
+
             $path = $this->storeCardImage($request);
 
             /*
              * Permanent image compatibility:
-             * - card_name is used by old generation code
-             * - image is used by the new preview/layout code
+             * - card_name is used by existing card generation code
+             * - image is used by the newer preview/layout code
              */
             $eventCard->card_name = $path;
             $eventCard->image = $path;
@@ -97,7 +99,7 @@ class EventCardController extends Controller
 
         Alert::success('Card Imported', 'Event card imported successfully.');
 
-        return $this->successResponse($request);
+        return $this->successResponse($request, $eventCard);
     }
 
     public function show(string $id)
@@ -158,27 +160,26 @@ class EventCardController extends Controller
         }
 
         if ($request->hasFile('image')) {
-            /*
-             * Delete old image using either image or card_name.
-             */
-            $oldImage = $eventCard->image ?: $eventCard->card_name;
-
-            $this->deleteOldCardImage($oldImage);
+            $this->syncPublicStorageLink();
 
             $path = $this->storeCardImage($request);
 
             /*
-             * Save new upload to both fields permanently.
+             * Do NOT delete the old image immediately.
+             *
+             * Reason:
+             * Some browsers/pages may still request the previous filename after save.
+             * Deleting the old file immediately causes broken image/404 and looks like
+             * the image is "corrupted". Keep old images until you run a cleanup job.
              */
             $eventCard->card_name = $path;
             $eventCard->image = $path;
         } else {
             /*
              * Important permanent fix:
-             * When saving positions/settings without uploading a new image,
-             * do not allow image/card_name to become null.
+             * When saving only positions/settings, preserve the existing image path.
              */
-            $existingImage = $eventCard->image ?: $eventCard->card_name;
+            $existingImage = $this->normalizeStoragePath($eventCard->image ?: $eventCard->card_name);
 
             if ($existingImage) {
                 $eventCard->card_name = $existingImage;
@@ -192,7 +193,7 @@ class EventCardController extends Controller
 
         Alert::success('Card Updated', 'Event card updated successfully.');
 
-        return $this->successResponse($request);
+        return $this->successResponse($request, $eventCard);
     }
 
     public function destroy(string $id)
@@ -211,21 +212,28 @@ class EventCardController extends Controller
         $extension = strtolower($image->getClientOriginalExtension());
 
         $safeName = Str::slug($originalName) ?: 'event-card';
-        $fileName = time() . '_' . $safeName . '.' . $extension;
+
+        /*
+         * Use time + random string to avoid browser/cache filename conflicts.
+         */
+        $fileName = time() . '_' . Str::random(8) . '_' . $safeName . '.' . $extension;
 
         return $image->storeAs($this->cardImageFolder, $fileName, 'public');
     }
 
     /**
      * Delete old card image if it exists.
+     *
+     * Keep this method for future cleanup/manual use, but the update() method does not
+     * call it immediately because that creates 404/broken previews for cached pages.
      */
     private function deleteOldCardImage(?string $path): void
     {
+        $path = $this->normalizeStoragePath($path);
+
         if (! $path) {
             return;
         }
-
-        $path = ltrim(str_replace('storage/', '', $path), '/\\');
 
         if (Storage::disk('public')->exists($path)) {
             Storage::disk('public')->delete($path);
@@ -240,6 +248,44 @@ class EventCardController extends Controller
 
         if (Storage::disk('public')->exists($correctedPath)) {
             Storage::disk('public')->delete($correctedPath);
+        }
+    }
+
+    /**
+     * Normalize DB storage paths so they always work with asset('storage/...').
+     */
+    private function normalizeStoragePath(?string $path): ?string
+    {
+        if (! $path) {
+            return null;
+        }
+
+        $path = trim($path);
+        $path = str_replace('\\', '/', $path);
+        $path = preg_replace('#^/+#', '', $path);
+        $path = preg_replace('#^public/#', '', $path);
+        $path = preg_replace('#^storage/#', '', $path);
+
+        return $path ?: null;
+    }
+
+    /**
+     * Ensure Laravel public storage symlink exists where supported.
+     */
+    private function syncPublicStorageLink(): void
+    {
+        try {
+            $publicStorage = public_path('storage');
+
+            if (is_link($publicStorage) || file_exists($publicStorage)) {
+                return;
+            }
+
+            if (function_exists('symlink')) {
+                @symlink(storage_path('app/public'), $publicStorage);
+            }
+        } catch (\Throwable $e) {
+            // Do not block saving card settings if symlink creation is not allowed.
         }
     }
 
@@ -284,12 +330,20 @@ class EventCardController extends Controller
     /**
      * Supports normal browser saves and AJAX Save & Download.
      */
-    private function successResponse(Request $request)
+    private function successResponse(Request $request, ?EventCard $eventCard = null)
     {
         if ($request->ajax() || $request->wantsJson()) {
+            $imagePath = $eventCard
+                ? $this->normalizeStoragePath($eventCard->image ?: $eventCard->card_name)
+                : null;
+
             return response()->json([
                 'success' => true,
                 'message' => 'Card settings saved successfully.',
+                'image_path' => $imagePath,
+                'image_url' => $imagePath
+                    ? asset('storage/' . $imagePath) . '?v=' . optional($eventCard->updated_at)->timestamp
+                    : null,
             ]);
         }
 
