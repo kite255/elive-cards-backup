@@ -58,17 +58,17 @@ class CreateCardController extends Controller
                     continue;
                 }
 
-                $cardDirectory = public_path("storage/cards/PDFCards/{$event->code}");
+                $cardDirectory = storage_path("app/public/cards/PDFCards/{$event->code}");
 
                 if (! File::exists($cardDirectory)) {
-                    File::makeDirectory($cardDirectory, 0755, true);
+                    File::makeDirectory($cardDirectory, 0775, true);
                 }
 
                 $imageFileName = 'card_yako_' . uniqid() . '.jpg';
                 $imagePath = $cardDirectory . DIRECTORY_SEPARATOR . $imageFileName;
 
                 $qrPath = $qrcodeName
-                    ? public_path("storage/qrcodes/{$event->code}/{$qrcodeName}")
+                    ? storage_path("app/public/qrcodes/{$event->code}/{$qrcodeName}")
                     : null;
 
                 $this->generateCardImage(
@@ -117,10 +117,10 @@ class CreateCardController extends Controller
             abort(404, 'Event card template not found.');
         }
 
-        $sampleDirectory = public_path('storage/guestsamplecard');
+        $sampleDirectory = storage_path('app/public/guestsamplecard');
 
         if (! File::exists($sampleDirectory)) {
-            File::makeDirectory($sampleDirectory, 0755, true);
+            File::makeDirectory($sampleDirectory, 0775, true);
         }
 
         $outputPath = $sampleDirectory . DIRECTORY_SEPARATOR . $event->code . '.jpg';
@@ -162,10 +162,10 @@ class CreateCardController extends Controller
         }
 
         $qrCodeValue = $guest->invitation_code;
-        $qrCodeDirectory = public_path("storage/qrcodes/{$event->code}");
+        $qrCodeDirectory = storage_path("app/public/qrcodes/{$event->code}");
 
         if (! File::exists($qrCodeDirectory)) {
-            File::makeDirectory($qrCodeDirectory, 0755, true);
+            File::makeDirectory($qrCodeDirectory, 0775, true);
         }
 
         $qrCode = QrCode::format('png')
@@ -252,7 +252,7 @@ class CreateCardController extends Controller
         }
 
         if (! File::exists(dirname($outputPath))) {
-            File::makeDirectory(dirname($outputPath), 0755, true);
+            File::makeDirectory(dirname($outputPath), 0775, true);
         }
 
         imagejpeg($canvas, $outputPath, 95);
@@ -265,18 +265,24 @@ class CreateCardController extends Controller
             return null;
         }
 
-        $cleanPath = ltrim(str_replace('storage/', '', $relativePath), '/\\');
-        $path = public_path('storage/' . $cleanPath);
+        $cleanPath = ltrim(str_replace(['storage/', 'public/'], '', $relativePath), '/\\');
 
-        if (File::exists($path)) {
-            return $path;
-        }
+        $possiblePaths = [
+            storage_path('app/public/' . $cleanPath),
+            public_path('storage/' . $cleanPath),
+        ];
 
         $correctedPath = str_replace('eventsCardSamples/', 'eventCardSamples/', $cleanPath);
-        $path = public_path('storage/' . $correctedPath);
 
-        if (File::exists($path)) {
-            return $path;
+        if ($correctedPath !== $cleanPath) {
+            $possiblePaths[] = storage_path('app/public/' . $correctedPath);
+            $possiblePaths[] = public_path('storage/' . $correctedPath);
+        }
+
+        foreach ($possiblePaths as $path) {
+            if (File::exists($path)) {
+                return $path;
+            }
         }
 
         return null;
