@@ -1,0 +1,1 @@
+<img src="{{ asset('assets/img/kiwonyicardsLogo.png') }}" alt="eLive Card Logo" style="height: 48px; width: auto;">
