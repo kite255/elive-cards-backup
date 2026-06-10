@@ -80,7 +80,15 @@ class EventCardController extends Controller
         $eventCard->event_id = $validated['event_id'];
 
         if ($request->hasFile('image')) {
-            $eventCard->card_name = $this->storeCardImage($request);
+            $path = $this->storeCardImage($request);
+
+            /*
+             * Permanent image compatibility:
+             * - card_name is used by old generation code
+             * - image is used by the new preview/layout code
+             */
+            $eventCard->card_name = $path;
+            $eventCard->image = $path;
         }
 
         $this->fillCardSettings($eventCard, $validated);
@@ -150,9 +158,32 @@ class EventCardController extends Controller
         }
 
         if ($request->hasFile('image')) {
-            $this->deleteOldCardImage($eventCard->card_name);
+            /*
+             * Delete old image using either image or card_name.
+             */
+            $oldImage = $eventCard->image ?: $eventCard->card_name;
 
-            $eventCard->card_name = $this->storeCardImage($request);
+            $this->deleteOldCardImage($oldImage);
+
+            $path = $this->storeCardImage($request);
+
+            /*
+             * Save new upload to both fields permanently.
+             */
+            $eventCard->card_name = $path;
+            $eventCard->image = $path;
+        } else {
+            /*
+             * Important permanent fix:
+             * When saving positions/settings without uploading a new image,
+             * do not allow image/card_name to become null.
+             */
+            $existingImage = $eventCard->image ?: $eventCard->card_name;
+
+            if ($existingImage) {
+                $eventCard->card_name = $existingImage;
+                $eventCard->image = $existingImage;
+            }
         }
 
         $this->fillCardSettings($eventCard, $validated);
@@ -194,6 +225,8 @@ class EventCardController extends Controller
             return;
         }
 
+        $path = ltrim(str_replace('storage/', '', $path), '/\\');
+
         if (Storage::disk('public')->exists($path)) {
             Storage::disk('public')->delete($path);
             return;
@@ -214,7 +247,7 @@ class EventCardController extends Controller
      * Save all card placeholder settings.
      *
      * IMPORTANT:
-     * X/Y values are now treated as PIXELS on the same design canvas used by the preview/download.
+     * X/Y values are treated as PIXELS on the same design canvas used by preview/download.
      */
     private function fillCardSettings(EventCard $eventCard, array $data): void
     {
