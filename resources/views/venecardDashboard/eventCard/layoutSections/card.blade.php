@@ -1,5 +1,18 @@
+<div class="elive-card-studio">
+    <div class="studio-hero mb-4">
+        <div>
+            <div class="studio-eyebrow">eLive Card Designer</div>
+            <h5 class="studio-title mb-1">Design invitation card and message templates</h5>
+            <p class="studio-subtitle mb-0">Arrange guest name, card type and QR code beside the card. Manage all SMS/WhatsApp messages below.</p>
+        </div>
+        <div class="studio-badges">
+            <span class="studio-badge">Canvas {{ $designWidth ?? 420 }}×{{ $designHeight ?? 620 }}</span>
+            <span class="studio-badge studio-badge-success">Simple Layout</span>
+        </div>
+    </div>
+
 <div class="row">
-    <div class="col-lg-7 col-md-12">
+    <div class="col-12">
         @if ($errors->any())
             <div class="alert alert-danger">
                 <ul class="mb-0">
@@ -17,18 +30,15 @@
             $eventCard = optional($event->eventcard);
 
             /*
-             * Permanent card image fix:
-             * - New records use image
+             * Permanent image preview fix:
+             * - New uploads use image
              * - Old records use card_name
              * - Remove accidental storage/public prefixes
-             * - Add cache buster so browser does not keep an old broken image after save
              */
             $cardImagePath = $eventCard->image ?: $eventCard->card_name;
 
             if (! empty($cardImagePath)) {
-                $cardImagePath = str_replace('\\', '/', $cardImagePath);
-                $cardImagePath = ltrim($cardImagePath, '/');
-                $cardImagePath = preg_replace('#^(public/)?storage/#', '', $cardImagePath);
+                $cardImagePath = ltrim(str_replace(['storage/', 'public/'], '', $cardImagePath), '/\\');
             }
 
             $hasCard = ! empty($cardImagePath);
@@ -93,6 +103,83 @@
         @endphp
 
         <style>
+
+            :root {
+                --elive-primary: #233F7E;
+                --elive-primary-soft: rgba(35, 63, 126, 0.08);
+                --elive-accent: #F99A12;
+                --elive-dark: #0B1F3A;
+                --elive-muted: #64748b;
+                --elive-line: #e5e7eb;
+                --elive-bg: #f8fafc;
+                --elive-card: #ffffff;
+                --elive-success: #16a34a;
+            }
+
+            .elive-card-studio {
+                background:
+                    radial-gradient(circle at top left, rgba(35, 63, 126, 0.10), transparent 34%),
+                    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+                border-radius: 22px;
+                padding: 18px;
+            }
+
+            .studio-hero {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 16px;
+                padding: 18px 20px;
+                border: 1px solid rgba(35, 63, 126, 0.10);
+                border-radius: 18px;
+                background: linear-gradient(135deg, #ffffff 0%, #f8fbff 55%, rgba(249, 154, 18, 0.08) 100%);
+            }
+
+            .studio-eyebrow {
+                color: var(--elive-accent);
+                font-size: 12px;
+                font-weight: 800;
+                letter-spacing: .08em;
+                text-transform: uppercase;
+                margin-bottom: 4px;
+            }
+
+            .studio-title {
+                color: var(--elive-dark);
+                font-weight: 800;
+                letter-spacing: -0.02em;
+            }
+
+            .studio-subtitle {
+                color: var(--elive-muted);
+                font-size: 13px;
+            }
+
+            .studio-badges {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                justify-content: flex-end;
+            }
+
+            .studio-badge {
+                display: inline-flex;
+                align-items: center;
+                min-height: 30px;
+                padding: 6px 10px;
+                border-radius: 999px;
+                background: var(--elive-primary-soft);
+                color: var(--elive-primary);
+                font-size: 12px;
+                font-weight: 700;
+                white-space: nowrap;
+            }
+
+            .studio-badge-success {
+                background: rgba(22, 163, 74, 0.10);
+                color: #15803d;
+            }
+
             .card-designer-viewport {
                 width: 100%;
                 max-width: 100%;
@@ -108,7 +195,6 @@
                 width: {{ $designWidth }}px;
                 height: {{ $designHeight }}px;
                 margin: 0 auto;
-                transform-origin: top center;
             }
 
             .upload-container.card-designer {
@@ -129,7 +215,7 @@
                 height: {{ $designHeight }}px;
                 object-fit: fill;
                 z-index: 1;
-                display: {{ $cardImageUrl ? 'block' : 'none' }};
+                display: {{ $hasCard ? 'block' : 'none' }};
             }
 
             .designer-placeholder {
@@ -138,7 +224,7 @@
                 cursor: move;
                 user-select: none;
                 touch-action: none;
-                transform: translate(-50%, -50%);
+                transform: translate(-50%, -50%); /* needed only to center draggable placeholders */
                 border: 1px dashed rgba(37, 99, 235, 0.55);
                 background: transparent !important;
                 padding: 0;
@@ -198,13 +284,204 @@
                 border: 1px solid var(--qr-main-color);
             }
 
+            .settings-panel-sticky {
+                position: sticky;
+                top: 12px;
+            }
+
+            .settings-card {
+                border: 1px solid #e5e7eb;
+                border-radius: 12px;
+                padding: 16px;
+                background: #ffffff;
+            }
+
+            .settings-card + .settings-card {
+                margin-top: 16px;
+            }
+
+            .sms-sections {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 16px;
+            }
+
+            .sms-side-card {
+                margin-bottom: 0 !important;
+            }
+
             .sms-side-card .card-header {
                 font-weight: 600;
                 background: #ffffff;
             }
+
+            @media (max-width: 991.98px) {
+                .settings-panel-sticky {
+                    position: static;
+                }
+
+                .sms-sections {
+                    grid-template-columns: 1fr;
+                }
+            }
+
+
+            .elive-card-studio h6 {
+                color: var(--elive-dark);
+                letter-spacing: -0.01em;
+            }
+
+            .card-designer-viewport {
+                background:
+                    linear-gradient(145deg, rgba(255,255,255,0.96), rgba(248,250,252,0.95)),
+                    radial-gradient(circle at 50% 20%, rgba(249,154,18,0.13), transparent 35%);
+                border: 1px solid rgba(35,63,126,0.10) !important;
+                border-radius: 18px !important;
+                padding: 18px !important;
+            }
+
+            .upload-container.card-designer {
+                border: 1px dashed rgba(35,63,126,0.25) !important;
+                border-radius: 14px !important;
+            }
+
+            .designer-placeholder {
+                border-radius: 6px;
+            }
+
+            .qr-placeholder {
+            }
+
+            .settings-panel-sticky {
+                max-height: calc(100vh - 110px);
+                overflow: auto;
+                padding-right: 4px;
+            }
+
+            .settings-card {
+                border: 1px solid rgba(35,63,126,0.10) !important;
+                border-radius: 18px !important;
+                padding: 18px !important;
+                background: rgba(255,255,255,0.92) !important;
+            }
+
+            .settings-card h6 {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 12px !important;
+            }
+
+            .form-label {
+                color: #475569;
+                font-size: 12px;
+                font-weight: 700;
+                margin-bottom: 6px;
+            }
+
+            .form-control,
+            .form-select {
+                border-radius: 10px;
+                border-color: #dbe4ef;
+                font-size: 13px;
+            }
+
+            .form-control:focus,
+            .form-select:focus {
+                border-color: var(--elive-primary);
+            }
+
+            .btn {
+                border-radius: 10px;
+                font-weight: 700;
+            }
+
+            .btn-primary {
+                background: linear-gradient(135deg, var(--elive-primary), #1D356A);
+                border: 0;
+            }
+
+            .btn-outline-primary {
+                color: var(--elive-primary);
+                border-color: rgba(35,63,126,0.35);
+                background: #ffffff;
+            }
+
+            .btn-info,
+            .btn-success {
+                border: 0;
+                color: #ffffff;
+                background: linear-gradient(135deg, #0ea5e9, #0284c7);
+            }
+
+            .btn-success {
+                background: linear-gradient(135deg, #16a34a, #15803d);
+            }
+
+            .sms-sections {
+                align-items: stretch;
+            }
+
+            .sms-side-card {
+                border: 1px solid rgba(35,63,126,0.10) !important;
+                border-radius: 18px !important;
+                overflow: hidden;
+            }
+
+            .sms-side-card .card-header {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 14px 16px;
+                background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%) !important;
+                color: var(--elive-primary);
+                border-bottom: 1px solid #edf2f7;
+                font-weight: 800;
+            }
+
+            .sms-side-card .card-body {
+                padding: 16px;
+            }
+
+            .sms-side-card textarea {
+                min-height: 132px;
+                resize: vertical;
+                background: #fbfdff;
+                line-height: 1.55;
+            }
+
+            .text-muted {
+                color: var(--elive-muted) !important;
+            }
+
+            @media (max-width: 991.98px) {
+                .studio-hero {
+                    flex-direction: column;
+                    align-items: flex-start;
+                }
+                .studio-badges {
+                    justify-content: flex-start;
+                }
+                .settings-panel-sticky {
+                    max-height: none;
+                    overflow: visible;
+                    padding-right: 0;
+                }
+            }
+
+
+            /* No grow, zoom, hover-scale, or animation effects */
+            * {
+                transition: none !important;
+                animation: none !important;
+            }
+
         </style>
 
-        <form id="cardSettingsForm" action="{{ $formAction }}" method="POST" enctype="multipart/form-data">
+            </div>
+</div>
+
+<form id="cardSettingsForm" action="{{ $formAction }}" method="POST" enctype="multipart/form-data">
             @csrf
 
             @if ($hasCard)
@@ -213,8 +490,16 @@
 
             <input type="hidden" name="event_id" value="{{ $event->id }}">
 
+            <div class="row g-4 align-items-start">
+                <div class="col-lg-7 col-md-12">
             <div class="mb-4">
-                <h6 class="fw-bold mb-3">Card Image</h6>
+                <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+                    <div>
+                        <h6 class="fw-bold mb-1">Card Image Preview</h6>
+                        <small class="text-muted">Drag placeholders directly on the card for exact positioning.</small>
+                    </div>
+                    <span class="studio-badge">Live preview</span>
+                </div>
 
                 <div class="card-designer-viewport" id="cardDesignerViewport">
                     <div class="card-designer-stage" id="cardDesignerStage">
@@ -228,13 +513,7 @@
                                 @if ($cardImageUrl)
                                     src="{{ $cardImageUrl }}"
                                 @endif
-                                onerror="this.style.display='none'; document.getElementById('cardImageWarning')?.classList.remove('d-none');"
-                                onload="this.style.display='block'; document.getElementById('cardImageWarning')?.classList.add('d-none');"
                             >
-
-                            <div id="cardImageWarning" class="d-none position-absolute top-50 start-50 translate-middle text-center text-danger px-3" style="z-index: 6; font-size: 13px; max-width: 320px;">
-                                Card image cannot be opened publicly. Recreate storage link or re-upload the image.
-                            </div>
 
                             <div
                                 id="guestNamePlaceholder"
@@ -313,6 +592,11 @@
             <input type="hidden" id="qrcodePosition" name="qrcodePosition" value="{{ $qrPosition }}">
             <input type="hidden" id="guestCardtypeBackgroundColor" name="guestCardtypeBackgroundColor" value="transparent">
 
+                </div>
+
+                <div class="col-lg-5 col-md-12">
+                    <div class="settings-panel-sticky">
+                        <div class="settings-card">
             <div class="mb-4">
                 <h6 class="fw-bold mb-3">Guest Name Settings</h6>
 
@@ -437,11 +721,22 @@
                     Reset Positions
                 </button>
             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </form>
-    </div>
 
-    <div class="col-lg-5 col-md-12">
-        <div class="sms-sections mt-4">
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+            <div>
+                <h6 class="fw-bold mb-1">Message Sections</h6>
+                <small class="text-muted">Manage invitation, reminder, welcome and thank-you messages below.</small>
+            </div>
+            <span class="studio-badge">SMS / WhatsApp templates</span>
+        </div>
+        <div class="sms-sections">
             <div class="card mb-4 shadow-sm sms-side-card">
                 <div class="card-header">
                     Card Message
@@ -577,7 +872,6 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!container) return;
 
     fitWholeCardInView();
-    window.addEventListener('resize', fitWholeCardInView);
 
     if (changeBtn && fileInput) {
         changeBtn.addEventListener('click', function () {
@@ -708,16 +1002,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     throw new Error('Save failed');
                 }
 
-                const contentType = response.headers.get('content-type') || '';
-                if (contentType.includes('application/json')) {
-                    const result = await response.json();
-
-                    if (result.image_url && previewImage) {
-                        previewImage.src = result.image_url;
-                        previewImage.style.display = 'block';
-                    }
-                }
-
                 window.location.href = downloadUrl;
             } catch (error) {
                 alert('Please click Update Card Settings first, then download again.');
@@ -726,22 +1010,10 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     }
-
     function fitWholeCardInView() {
-        if (!stage || !viewport) return;
-
-        stage.style.transform = 'scale(1)';
+        if (!stage) return;
+        stage.style.transform = 'none';
         stage.style.height = DESIGN_HEIGHT + 'px';
-
-        const availableWidth = Math.max(260, viewport.clientWidth - 24);
-        const availableHeight = Math.max(360, window.innerHeight - 180);
-
-        const scaleByWidth = availableWidth / DESIGN_WIDTH;
-        const scaleByHeight = availableHeight / DESIGN_HEIGHT;
-        const scale = Math.min(1, scaleByWidth, scaleByHeight);
-
-        stage.style.transform = `scale(${scale})`;
-        stage.style.height = `${DESIGN_HEIGHT * scale}px`;
     }
 
     function bindFontSizeInput(input, element) {
@@ -839,3 +1111,5 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 });
 </script>
+
+</div>
