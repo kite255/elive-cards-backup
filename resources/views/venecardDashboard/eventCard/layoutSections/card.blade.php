@@ -430,7 +430,10 @@
 
                         <input type="hidden" value="{{ encrypt($event->id) }}" name="event_id" readonly>
 
-                        <textarea name="SMS_card" class="form-control" rows="6" placeholder="{{ $defaultCardMessage }}">{{ old('SMS_card', $smsCard->SMS_card ?? $defaultCardMessage) }}</textarea>
+                        <textarea name="SMS_card" class="form-control" rows="6" placeholder="{{ $defaultCardMessage }}">{{ old('SMS_card', $smsCard->SMS_card ?? '') }}</textarea>
+                        <small class="text-muted d-block mt-2">
+                            The text above is only a sample placeholder. Type and save your real card message here.
+                        </small>
 
                         <div class="mt-3">
                             <button class="btn {{ $smsCard ? 'btn-info' : 'btn-success' }} w-100">
@@ -454,7 +457,10 @@
 
                         <input type="hidden" value="{{ encrypt($event->id) }}" name="event_id" readonly>
 
-                        <textarea name="SMS_reminder" class="form-control" rows="4" placeholder="{{ $defaultReminderMessage }}">{{ old('SMS_reminder', $smsReminder->SMS_reminder ?? $defaultReminderMessage) }}</textarea>
+                        <textarea name="SMS_reminder" class="form-control" rows="4" placeholder="{{ $defaultReminderMessage }}">{{ old('SMS_reminder', $smsReminder->SMS_reminder ?? '') }}</textarea>
+                        <small class="text-muted d-block mt-2">
+                            The text above is only a sample placeholder. Type and save your real reminder message here.
+                        </small>
 
                         <div class="mt-3">
                             <button class="btn {{ $smsReminder ? 'btn-info' : 'btn-success' }} w-100">
@@ -478,7 +484,10 @@
 
                         <input type="hidden" value="{{ encrypt($event->id) }}" name="event_id" readonly>
 
-                        <textarea name="SMS_welcoming" class="form-control" rows="4" placeholder="{{ $defaultWelcomeMessage }}">{{ old('SMS_welcoming', $smsWelcoming->SMS_welcoming ?? $defaultWelcomeMessage) }}</textarea>
+                        <textarea name="SMS_welcoming" class="form-control" rows="4" placeholder="{{ $defaultWelcomeMessage }}">{{ old('SMS_welcoming', $smsWelcoming->SMS_welcoming ?? '') }}</textarea>
+                        <small class="text-muted d-block mt-2">
+                            The text above is only a sample placeholder. Type and save your real welcome message here.
+                        </small>
 
                         <div class="mt-3">
                             <button class="btn {{ $smsWelcoming ? 'btn-info' : 'btn-success' }} w-100">
@@ -502,7 +511,10 @@
 
                         <input type="hidden" value="{{ encrypt($event->id) }}" name="event_id" readonly>
 
-                        <textarea name="SMS_thankyou" class="form-control" rows="4" placeholder="{{ $defaultThankYouMessage }}">{{ old('SMS_thankyou', $smsThankyou->SMS_thankyou ?? $defaultThankYouMessage) }}</textarea>
+                        <textarea name="SMS_thankyou" class="form-control" rows="4" placeholder="{{ $defaultThankYouMessage }}">{{ old('SMS_thankyou', $smsThankyou->SMS_thankyou ?? '') }}</textarea>
+                        <small class="text-muted d-block mt-2">
+                            The text above is only a sample placeholder. Type and save your real thank-you message here.
+                        </small>
 
                         <div class="mt-3">
                             <button class="btn {{ $smsThankyou ? 'btn-info' : 'btn-success' }} w-100">
