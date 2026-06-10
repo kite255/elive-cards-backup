@@ -17,6 +17,19 @@
             $eventCard = optional($event->eventcard);
             $hasCard = ! empty($eventCard->card_name);
 
+            /*
+             * Build a safe public URL for the uploaded card image.
+             * The database should store paths like: eventCardSamples/card.jpg
+             * This also supports older saved paths like: storage/eventCardSamples/card.jpg
+             */
+            $cardImagePath = $hasCard
+                ? ltrim(str_replace('storage/', '', $eventCard->card_name), '/\\')
+                : null;
+
+            $cardImageUrl = $cardImagePath
+                ? asset('storage/' . $cardImagePath)
+                : null;
+
             $formAction = $hasCard
                 ? route('card.update', encrypt($event->eventcard->id))
                 : route('card.store');
@@ -101,6 +114,25 @@
                 border: 1px dashed #cbd5e1;
                 border-radius: 8px;
                 line-height: normal;
+            }
+
+
+            .card-preview-empty {
+                position: absolute;
+                inset: 0;
+                display: none;
+                align-items: center;
+                justify-content: center;
+                padding: 18px;
+                text-align: center;
+                color: #64748b;
+                font-size: 13px;
+                background: #ffffff;
+                z-index: 2;
+            }
+
+            .card-preview-empty.show {
+                display: flex;
             }
 
             .card-preview-image {
@@ -206,10 +238,15 @@
                                 id="previewImage"
                                 class="img-fluid card-preview-image"
                                 alt="Card Preview"
-                                @if ($hasCard)
-                                    src="{{ asset('storage/' . $eventCard->card_name) }}"
+                                @if ($cardImageUrl)
+                                    src="{{ $cardImageUrl }}"
                                 @endif
+                                onerror="this.removeAttribute('src'); this.style.display='none'; const empty = document.getElementById('cardPreviewEmpty'); if (empty) empty.classList.add('show');"
                             >
+
+                            <div id="cardPreviewEmpty" class="card-preview-empty {{ $cardImageUrl ? '' : 'show' }}">
+                                Upload or re-upload the card image, then save the card settings.
+                            </div>
 
                             <div
                                 id="guestNamePlaceholder"
@@ -430,10 +467,7 @@
 
                         <input type="hidden" value="{{ encrypt($event->id) }}" name="event_id" readonly>
 
-                        <textarea name="SMS_card" class="form-control" rows="6" placeholder="{{ $defaultCardMessage }}">{{ old('SMS_card', $smsCard->SMS_card ?? '') }}</textarea>
-                        <small class="text-muted d-block mt-2">
-                            The text above is only a sample placeholder. Type and save your real card message here.
-                        </small>
+                        <textarea name="SMS_card" class="form-control" rows="6" placeholder="{{ $defaultCardMessage }}">{{ old('SMS_card', $smsCard->SMS_card ?? $defaultCardMessage) }}</textarea>
 
                         <div class="mt-3">
                             <button class="btn {{ $smsCard ? 'btn-info' : 'btn-success' }} w-100">
@@ -457,10 +491,7 @@
 
                         <input type="hidden" value="{{ encrypt($event->id) }}" name="event_id" readonly>
 
-                        <textarea name="SMS_reminder" class="form-control" rows="4" placeholder="{{ $defaultReminderMessage }}">{{ old('SMS_reminder', $smsReminder->SMS_reminder ?? '') }}</textarea>
-                        <small class="text-muted d-block mt-2">
-                            The text above is only a sample placeholder. Type and save your real reminder message here.
-                        </small>
+                        <textarea name="SMS_reminder" class="form-control" rows="4" placeholder="{{ $defaultReminderMessage }}">{{ old('SMS_reminder', $smsReminder->SMS_reminder ?? $defaultReminderMessage) }}</textarea>
 
                         <div class="mt-3">
                             <button class="btn {{ $smsReminder ? 'btn-info' : 'btn-success' }} w-100">
@@ -484,10 +515,7 @@
 
                         <input type="hidden" value="{{ encrypt($event->id) }}" name="event_id" readonly>
 
-                        <textarea name="SMS_welcoming" class="form-control" rows="4" placeholder="{{ $defaultWelcomeMessage }}">{{ old('SMS_welcoming', $smsWelcoming->SMS_welcoming ?? '') }}</textarea>
-                        <small class="text-muted d-block mt-2">
-                            The text above is only a sample placeholder. Type and save your real welcome message here.
-                        </small>
+                        <textarea name="SMS_welcoming" class="form-control" rows="4" placeholder="{{ $defaultWelcomeMessage }}">{{ old('SMS_welcoming', $smsWelcoming->SMS_welcoming ?? $defaultWelcomeMessage) }}</textarea>
 
                         <div class="mt-3">
                             <button class="btn {{ $smsWelcoming ? 'btn-info' : 'btn-success' }} w-100">
@@ -511,10 +539,7 @@
 
                         <input type="hidden" value="{{ encrypt($event->id) }}" name="event_id" readonly>
 
-                        <textarea name="SMS_thankyou" class="form-control" rows="4" placeholder="{{ $defaultThankYouMessage }}">{{ old('SMS_thankyou', $smsThankyou->SMS_thankyou ?? '') }}</textarea>
-                        <small class="text-muted d-block mt-2">
-                            The text above is only a sample placeholder. Type and save your real thank-you message here.
-                        </small>
+                        <textarea name="SMS_thankyou" class="form-control" rows="4" placeholder="{{ $defaultThankYouMessage }}">{{ old('SMS_thankyou', $smsThankyou->SMS_thankyou ?? $defaultThankYouMessage) }}</textarea>
 
                         <div class="mt-3">
                             <button class="btn {{ $smsThankyou ? 'btn-info' : 'btn-success' }} w-100">
@@ -593,6 +618,10 @@ document.addEventListener('DOMContentLoaded', function () {
             reader.onload = function (event) {
                 previewImage.src = event.target.result;
                 previewImage.style.display = 'block';
+
+                const empty = document.getElementById('cardPreviewEmpty');
+                if (empty) empty.classList.remove('show');
+
                 previewImage.onload = fitWholeCardInView;
             };
 
