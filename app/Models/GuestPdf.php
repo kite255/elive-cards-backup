@@ -6,13 +6,33 @@ use Illuminate\Database\Eloquent\Model;
 
 class GuestPdf extends Model
 {
-    //relationship btn event-guests and pdf-card
+    /**
+     * Allow mass assignment when creating generated guest card records.
+     *
+     * This fixes:
+     * Add [event_guests_id] to fillable property...
+     */
+    protected $guarded = [];
+
+    /**
+     * Relationship between event guest and generated PDF/card.
+     */
     public function eventguests()
     {
-        return $this->belongsTo(EventGuest::class,'event_guests_id');
+        return $this->belongsTo(EventGuest::class, 'event_guests_id');
     }
-    
-    //relationship btn guest-pdf and sendWhatsappCard
+
+    /**
+     * Optional cleaner relationship name.
+     */
+    public function guest()
+    {
+        return $this->belongsTo(EventGuest::class, 'event_guests_id');
+    }
+
+    /**
+     * Relationship between guest PDF/card and WhatsApp sending records.
+     */
     public function sendWhatsappCards()
     {
         return $this->hasMany(SendWhatsappCard::class, 'guest_pdf_id');

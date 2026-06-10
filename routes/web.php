@@ -288,7 +288,7 @@ Route::middleware('auth')->group(function () {
 | WhatsApp webhook
 |--------------------------------------------------------------------------
 */
-Route::get('/whatsapp-webhook', [WhatsappWebhookController::class, 'handleWebhook'])
+Route::match(['get', 'post'], '/whatsapp-webhook', [WhatsappWebhookController::class, 'handleWebhook'])
     ->name('whatsapp-webhook');
 
 /*

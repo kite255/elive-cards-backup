@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Card With QR Code</title>
+    <title>Guest Card</title>
 
     @php
         $canvasWidth = $canvasWidth ?? 420;
@@ -28,6 +28,13 @@
         $qrCodeForegroundColor = $qrCodeForegroundColor ?? '#000000';
         $qrCodeBackgroundColor = $qrCodeBackgroundColor ?? '#ffffff';
         $qrCodeEyeColor = $qrCodeEyeColor ?? $qrCodeForegroundColor;
+
+        $mainCard = $main_card ?? null;
+        $eventCode = $event_code ?? null;
+        $guestQrCode = $guest_qrcode ?? null;
+
+        $guestName = $guest_name ?? '';
+        $guestCardType = $guest_cardtype ?? '';
 
         $normalizeHex = function ($color, $default = '#000000') {
             $color = trim((string) $color);
@@ -70,8 +77,13 @@
         $qrCodeBackgroundColor = $normalizeHex($qrCodeBackgroundColor, '#ffffff');
         $qrCodeEyeColor = $normalizeHex($qrCodeEyeColor, $qrCodeForegroundColor);
 
-        $mainCardPath = public_path('storage/' . ltrim($main_card, '/'));
-        $qrPath = public_path('storage/qrcodes/' . $event_code . '/' . $guest_qrcode);
+        $mainCardPath = $mainCard
+            ? public_path('storage/' . ltrim($mainCard, '/'))
+            : null;
+
+        $qrPath = ($eventCode && $guestQrCode)
+            ? public_path('storage/qrcodes/' . $eventCode . '/' . $guestQrCode)
+            : null;
 
         /*
         |--------------------------------------------------------------------------
@@ -94,7 +106,7 @@
         */
         $qrBase64 = null;
 
-        if (! empty($guest_qrcode) && file_exists($qrPath)) {
+        if ($qrPath && file_exists($qrPath)) {
             try {
                 $qrSource = imagecreatefrompng($qrPath);
 
@@ -159,7 +171,9 @@
                     imagedestroy($qrImage);
                 }
             } catch (\Throwable $e) {
-                $qrBase64 = base64_encode(file_get_contents($qrPath));
+                if (file_exists($qrPath)) {
+                    $qrBase64 = base64_encode(file_get_contents($qrPath));
+                }
             }
         }
     @endphp
@@ -259,7 +273,7 @@
 
 <body>
     <div class="card-canvas">
-        @if(file_exists($mainCardPath))
+        @if($mainCardPath && file_exists($mainCardPath))
             <img
                 src="data:image/jpeg;base64,{{ base64_encode(file_get_contents($mainCardPath)) }}"
                 alt="Main Card"
@@ -267,13 +281,15 @@
             >
         @endif
 
-        <div class="guest-name">
-            {{ $guest_name }}
-        </div>
+        @if(!empty($guestName))
+            <div class="guest-name">
+                {{ $guestName }}
+            </div>
+        @endif
 
-        @if(!empty($guest_cardtype))
+        @if(!empty($guestCardType))
             <div class="card-type">
-                {{ strtoupper($guest_cardtype) }}
+                {{ strtoupper($guestCardType) }}
             </div>
         @endif
 

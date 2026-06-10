@@ -15,39 +15,7 @@
             $designHeight = 620;
 
             $eventCard = optional($event->eventcard);
-
-            /*
-             * Live server storage fix:
-             * The database should store only a relative public disk path like:
-             * eventCardSamples/image-name.jpg
-             *
-             * The image is then served through:
-             * /storage/eventCardSamples/image-name.jpg
-             */
-            $cardPath = $eventCard->card_name ?? null;
-
-            if ($cardPath) {
-                $cardPath = trim($cardPath);
-                $cardPath = ltrim($cardPath, '/');
-                $cardPath = str_replace('\\\\', '/', $cardPath);
-                $cardPath = str_replace('\\', '/', $cardPath);
-
-                // Remove wrong prefixes if old records contain them.
-                $cardPath = preg_replace('#^(public/|storage/|app/public/)#', '', $cardPath);
-
-                // Compatibility for old wrong folder name.
-                $cardPath = str_replace('eventsCardSamples/', 'eventCardSamples/', $cardPath);
-            }
-
-            $hasCard = ! empty($cardPath);
-
-            $cardImageUrl = $hasCard
-                ? \Illuminate\Support\Facades\Storage::disk('public')->url($cardPath)
-                : null;
-
-            $fallbackCardImageUrl = $hasCard
-                ? asset('storage/' . $cardPath)
-                : null;
+            $hasCard = ! empty($eventCard->card_name);
 
             $formAction = $hasCard
                 ? route('card.update', encrypt($event->eventcard->id))
@@ -85,7 +53,7 @@
             $smsWelcoming = $event->smsWelcoming ?? $event->welcomingsms ?? null;
             $smsThankyou = $event->smsThankyou ?? $event->thankyousms ?? null;
 
-            $defaultCardMessage = "Habari #NAME#,\n\nUnakaribishwa kwenye #EVENT#\nCARD: #CARD#\nCODE : #CODE#\nTAREHE : #TAREHE#\nUKUMBI: #VENUE#";
+            $defaultCardMessage = "Habari #NAME#,\n\nUnakaribishwa kwenye #EVENT#\nCARD: #CARD#\nCODE : #CODE#\nTAREHE : #TAREHE#\nUKUMBI: #VENUE#\nLINK: #CARDLINK#";
 
             $defaultReminderMessage = "Habari #NAME#,\n\nUnakumbushwa kuhudhuria #EVENT#, kesho tarehe #TAREHE# kuanzia saa 12:30 jioni kama ilivyoelezwa kwenye kadi yako.";
 
@@ -239,9 +207,7 @@
                                 class="img-fluid card-preview-image"
                                 alt="Card Preview"
                                 @if ($hasCard)
-                                    src="{{ $cardImageUrl }}"
-                                    data-fallback-src="{{ $fallbackCardImageUrl }}"
-                                    onerror="if (this.dataset.fallbackSrc && this.src !== this.dataset.fallbackSrc) { this.src = this.dataset.fallbackSrc; }"
+                                    src="{{ asset('storage/' . $eventCard->card_name) }}"
                                 @endif
                             >
 

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Guest Card</title>
+    <title>Guest Card With QR Code</title>
 
     @php
         /*
@@ -15,11 +15,11 @@
 
         /*
         |--------------------------------------------------------------------------
-        | Safe values
+        | Safe positions
         |--------------------------------------------------------------------------
         */
         $guestnameX = $guestnameX ?? 210;
-        $guestnameY = $guestnameY ?? 70;
+        $guestnameY = $guestnameY ?? 115;
 
         $cardtypeX = $cardtypeX ?? 210;
         $cardtypeY = $cardtypeY ?? 540;
@@ -29,68 +29,28 @@
 
         $qrCodeSize = $qrCodeSize ?? 72;
 
+        /*
+        |--------------------------------------------------------------------------
+        | Safe font/color values
+        |--------------------------------------------------------------------------
+        */
         $guestFontSize = $guestFontSize ?? ($guestNameFontSize ?? 12);
         $cardTypeFontSize = $cardTypeFontSize ?? ($guestCardtypeFontSize ?? 11);
 
         $guestNameColor = $guestNameColor ?? '#000000';
         $cardTypeColor = $cardTypeColor ?? ($guestCardtypeColor ?? '#000000');
 
-        $qrCodeForegroundColor = $qrCodeForegroundColor ?? '#000000';
-        $qrCodeBackgroundColor = $qrCodeBackgroundColor ?? '#ffffff';
-        $qrCodeEyeColor = $qrCodeEyeColor ?? $qrCodeForegroundColor;
-
+        /*
+        |--------------------------------------------------------------------------
+        | Safe data values
+        |--------------------------------------------------------------------------
+        */
         $mainCard = $main_card ?? null;
         $eventCode = $event_code ?? null;
         $guestQrCode = $guest_qrcode ?? null;
 
         $guestName = $guest_name ?? '';
         $guestCardType = $guest_cardtype ?? '';
-
-        /*
-        |--------------------------------------------------------------------------
-        | Color helpers
-        |--------------------------------------------------------------------------
-        */
-        $normalizeHex = function ($color, $default = '#000000') {
-            $color = trim((string) $color);
-
-            if ($color === '') {
-                return $default;
-            }
-
-            if (! str_starts_with($color, '#')) {
-                $color = '#' . $color;
-            }
-
-            if (preg_match('/^#[0-9A-Fa-f]{6}$/', $color)) {
-                return strtolower($color);
-            }
-
-            if (preg_match('/^#[0-9A-Fa-f]{3}$/', $color)) {
-                return strtolower(
-                    '#' .
-                    $color[1] . $color[1] .
-                    $color[2] . $color[2] .
-                    $color[3] . $color[3]
-                );
-            }
-
-            return $default;
-        };
-
-        $hexToRgb = function ($hex) {
-            $hex = ltrim($hex, '#');
-
-            return [
-                hexdec(substr($hex, 0, 2)),
-                hexdec(substr($hex, 2, 2)),
-                hexdec(substr($hex, 4, 2)),
-            ];
-        };
-
-        $qrCodeForegroundColor = $normalizeHex($qrCodeForegroundColor, '#000000');
-        $qrCodeBackgroundColor = $normalizeHex($qrCodeBackgroundColor, '#ffffff');
-        $qrCodeEyeColor = $normalizeHex($qrCodeEyeColor, $qrCodeForegroundColor);
 
         /*
         |--------------------------------------------------------------------------
@@ -107,7 +67,7 @@
 
         /*
         |--------------------------------------------------------------------------
-        | Positioning
+        | Center-based positioning
         |--------------------------------------------------------------------------
         */
         $guestLeft = $guestnameX;
@@ -121,7 +81,7 @@
 
         /*
         |--------------------------------------------------------------------------
-        | Main card image as base64
+        | Main card base64
         |--------------------------------------------------------------------------
         */
         $mainCardBase64 = null;
@@ -142,15 +102,45 @@
 
         /*
         |--------------------------------------------------------------------------
-        | QR code as base64 - safe direct render first
+        | QR base64
         |--------------------------------------------------------------------------
-        | Direct embedding avoids the black-box issue caused by transparent PNG pixels.
+        | Important:
+        | Do not recolor QR pixels here.
+        | We only flatten transparency to white to prevent Imagick/Dompdf
+        | from rendering transparent pixels as black.
         */
         $qrBase64 = null;
-        $qrMime = 'image/png';
 
         if ($qrPath && file_exists($qrPath)) {
-            $qrBase64 = base64_encode(file_get_contents($qrPath));
+            try {
+                $qrSource = imagecreatefrompng($qrPath);
+
+                if ($qrSource) {
+                    $qrWidth = imagesx($qrSource);
+                    $qrHeight = imagesy($qrSource);
+
+                    $qrImage = imagecreatetruecolor($qrWidth, $qrHeight);
+
+                    $white = imagecolorallocate($qrImage, 255, 255, 255);
+
+                    imagefill($qrImage, 0, 0, $white);
+                    imagealphablending($qrImage, true);
+                    imagesavealpha($qrImage, false);
+
+                    imagecopy($qrImage, $qrSource, 0, 0, 0, 0, $qrWidth, $qrHeight);
+
+                    ob_start();
+                    imagepng($qrImage);
+                    $qrPng = ob_get_clean();
+
+                    $qrBase64 = base64_encode($qrPng);
+
+                    imagedestroy($qrSource);
+                    imagedestroy($qrImage);
+                }
+            } catch (\Throwable $e) {
+                $qrBase64 = base64_encode(file_get_contents($qrPath));
+            }
         }
     @endphp
 
@@ -230,18 +220,21 @@
             top: {{ $qrTop }}px;
             width: {{ $qrCodeSize }}px;
             height: {{ $qrCodeSize }}px;
-            z-index: 3;
-            background: {{ $qrCodeBackgroundColor }};
-            padding: 6px;
+            z-index: 5;
+            background: #ffffff;
+            padding: 4px;
             border: none;
             border-radius: 0;
             box-shadow: none;
+            overflow: hidden;
         }
 
         .qr-code {
             width: 100%;
             height: 100%;
             display: block;
+            object-fit: contain;
+            background: #ffffff;
         }
     </style>
 </head>
@@ -268,10 +261,10 @@
             </div>
         @endif
 
-        @if(!empty($qrBase64))
+        @if($qrBase64)
             <div class="qr-wrap">
                 <img
-                    src="data:{{ $qrMime }};base64,{{ $qrBase64 }}"
+                    src="data:image/png;base64,{{ $qrBase64 }}"
                     alt="QR Code"
                     class="qr-code"
                 >

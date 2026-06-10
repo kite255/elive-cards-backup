@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Bryceandy\Beem\Facades\Beem;
 use App\Models\BulkSMS;
-use App\Models\VendorBalance;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
 use RealRashid\SweetAlert\Facades\Alert;
 
@@ -14,63 +14,48 @@ class SendMessageController extends Controller
 {
     public function index()
     {
-        $messages = BulkSMS::where('user_id', Auth::user()->id)->orderBy('created_at', 'desc')->get();
+        $messages = BulkSMS::where('user_id', Auth::id())
+            ->orderBy('created_at', 'desc')
+            ->get();
+
         return view('venecardDashboard.message.sms.index', compact('messages'));
     }
 
     public function sendsinglemessage(Request $request)
     {
-
-        $request->validate([
-            'message' => 'required',
+        $validated = $request->validate([
+            'message' => 'required|string',
             'phone' => 'required|string',
-           
+            'sender_id' => 'nullable|string|max:50',
         ]);
 
-        // create a random batch id
-        $batch_id = substr(str_shuffle('ABCDEF'), 0, 3) . substr(str_shuffle('123456789'), 0, 7);
-       
-       
-              //   sending sms card section
-$url = "https://message.elive.co.tz/api/v1/vendor/message/send";
-$data = array(
-	"senderId" => "elive card",
-	"messageType" => "text",
-	"message" => $request->message,
-    "contacts" => "255" . ltrim($request->phone, '0'),
-	"deliveryReportUrl" => "https://your-server.com/delivery-callback"
-);
+        $batch_id = $this->generateBatchId();
 
-$headers = array(
-	"Content-Type: application/json",
-	"api_key: elive card",
-	"api_secret: FwoVF9fxHt8rJ1hhgprB"
-);
+        $phone = $this->formatTanzaniaPhone($validated['phone']);
+        $message = $validated['message'];
+        $senderId = $validated['sender_id'] ?? config('services.elive_sms.sender_id', 'elive card');
 
-$ch = curl_init($url);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        if (! $phone) {
+            Alert::error('Invalid Phone', 'Please enter a valid phone number.');
+            return redirect()->back()->withInput();
+        }
 
-$response = curl_exec($ch);
-
-curl_close($ch);
-
-$response_data = json_decode($response, true); 
-
-$messageId = $response_data['data']['shootId'] ?? null;
-
+        $smsResult = $this->sendSmsToApi($phone, $message, $senderId);
 
         $singlemessage = new BulkSMS();
-        $singlemessage->user_id = Auth::user()->id;
-        $singlemessage->phone = ltrim($request->phone, '0');
-        $singlemessage->message = $request->message;
-        $singlemessage->sender_id = $request->sender_id;
-        $singlemessage->request_id = $messageId ?? 'unknown';
-        $singlemessage->sent_status = 'sent';
+        $singlemessage->user_id = Auth::id();
+        $singlemessage->phone = $phone;
+        $singlemessage->message = $message;
+        $singlemessage->sender_id = $senderId;
+        $singlemessage->request_id = $smsResult['message_id'] ?? 'unknown';
+        $singlemessage->sent_status = $smsResult['success'] ? 'sent' : 'failed';
         $singlemessage->batch_id = $batch_id;
         $singlemessage->save();
+
+        if (! $smsResult['success']) {
+            Alert::error('SMS Not Sent', $smsResult['message'] ?? 'SMS provider rejected the request.');
+            return redirect()->back()->withInput();
+        }
 
         Alert::success('Successfully Sent', 'Batch Number: ' . $batch_id);
         return redirect()->back();
@@ -78,93 +63,204 @@ $messageId = $response_data['data']['shootId'] ?? null;
 
     public function sendbatchmessage(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'excel_file' => 'required|mimes:xlsx,csv,xls',
             'message' => 'required|string',
-           
+            'sender_id' => 'nullable|string|max:50',
         ]);
 
-        // create a random batch id
-        $batch_id = substr(str_shuffle('ABCDEF'), 0, 3) . substr(str_shuffle('123456789'), 0, 7);
+        $batch_id = $this->generateBatchId();
+        $senderId = $validated['sender_id'] ?? config('services.elive_sms.sender_id', 'elive card');
 
         try {
-            // Get the file extension to determine the reader type
             $fileExtension = $request->file('excel_file')->getClientOriginalExtension();
 
-            // Import the Excel file and get all rows with explicit reader type
-            $data = Excel::toArray([], $request->file('excel_file'), null, $this->getReaderType($fileExtension));
+            $data = Excel::toArray(
+                [],
+                $request->file('excel_file'),
+                null,
+                $this->getReaderType($fileExtension)
+            );
 
-            // Skip the first row (header) and get only the data rows
-            $dataRows = array_slice($data[0], 1);
+            $dataRows = array_slice($data[0] ?? [], 1);
 
-            // dd only the data rows (excluding header)
-            // dd($dataRows);
+            $sentCount = 0;
+            $failedCount = 0;
 
             foreach ($dataRows as $row) {
-               
+                $rawPhone = $row[0] ?? null;
+                $phone = $this->formatTanzaniaPhone($rawPhone);
 
-                // message string replace with #column_name#
-                $message = $request->message;
-                // Replace placeholders with column values
-                // #A# = column 0, #B# = column 1, #C# = column 2, etc.
-                for ($i = 0; $i < count($row); $i++) {
-                    $columnLetter = chr(65 + $i); // Convert 0 to 'A', 1 to 'B', etc.
-                    $placeholder = '#' . $columnLetter . '#';
-                    $value = $row[$i] ?? '';
-                    $message = str_replace($placeholder, $value, $message);
+                if (! $phone) {
+                    $failedCount++;
+                    continue;
                 }
 
-                   //   sending sms card section
-$url = "https://message.elive.co.tz/api/v1/vendor/message/send";
-$data = array(
-	"senderId" => "elive card",
-	"messageType" => "text",
-	"message" => $message,
-	"contacts" => "255" . $row[0],
-	"deliveryReportUrl" => "https://your-server.com/delivery-callback"
-);
+                $message = $this->replaceMessagePlaceholders($validated['message'], $row);
 
-$headers = array(
-	"Content-Type: application/json",
-	"api_key: elive card",
-	"api_secret: FwoVF9fxHt8rJ1hhgprB"
-);
+                $smsResult = $this->sendSmsToApi($phone, $message, $senderId);
 
-$ch = curl_init($url);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-
-$response = curl_exec($ch);
-
-curl_close($ch);
-
-$response_data = json_decode($response, true); 
-
-$messageId = $response_data['data']['shootId'] ?? null;
-
-
-               $singlemessage = new BulkSMS();
-                $singlemessage->user_id = Auth::user()->id;
-                $singlemessage->phone = $row[0];
+                $singlemessage = new BulkSMS();
+                $singlemessage->user_id = Auth::id();
+                $singlemessage->phone = $phone;
                 $singlemessage->message = $message;
-                $singlemessage->sender_id = $request->sender_id;
-                $singlemessage->request_id = $messageId ?? 'unknown';
-                $singlemessage->sent_status = 'sent';
+                $singlemessage->sender_id = $senderId;
+                $singlemessage->request_id = $smsResult['message_id'] ?? 'unknown';
+                $singlemessage->sent_status = $smsResult['success'] ? 'sent' : 'failed';
                 $singlemessage->batch_id = $batch_id;
                 $singlemessage->save();
+
+                if ($smsResult['success']) {
+                    $sentCount++;
+                } else {
+                    $failedCount++;
+                }
             }
 
-            Alert::success('Successfully Sent', 'Batch Number: ' . $batch_id);
+            Alert::success(
+                'Batch SMS Completed',
+                'Batch Number: ' . $batch_id . '. Sent: ' . $sentCount . ', Failed: ' . $failedCount
+            );
+
             return redirect()->back();
         } catch (\Exception $e) {
-            dd('Error: ' . $e->getMessage(), 'File: ' . $e->getFile(), 'Line: ' . $e->getLine());
+            Log::error('Batch SMS Error', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            Alert::error('Error', 'Failed to send batch SMS. Check Laravel logs.');
+            return redirect()->back()->withInput();
         }
     }
 
-    //telk sendbatchmessage class the excel imported extension
-        private function getReaderType($extension)
+    private function sendSmsToApi(string $phone, string $message, string $senderId): array
+    {
+        $url = config('services.elive_sms.url');
+        $apiKey = config('services.elive_sms.api_key');
+        $apiSecret = config('services.elive_sms.api_secret');
+
+        if (! $url || ! $apiKey || ! $apiSecret) {
+            Log::error('SMS API credentials missing', [
+                'url_exists' => ! empty($url),
+                'api_key_exists' => ! empty($apiKey),
+                'api_secret_exists' => ! empty($apiSecret),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'SMS API credentials are missing.',
+                'message_id' => null,
+            ];
+        }
+
+        $payload = [
+            'senderId' => $senderId,
+            'messageType' => 'text',
+            'message' => $message,
+            'contacts' => $phone,
+            'deliveryReportUrl' => config('services.elive_sms.delivery_report_url', url('/sms/delivery-callback')),
+        ];
+
+        try {
+            Log::info('SMS sending started', [
+                'phone' => $phone,
+                'senderId' => $senderId,
+                'payload' => $payload,
+            ]);
+
+            $response = Http::withHeaders([
+                'Content-Type' => 'application/json',
+                'api_key' => $apiKey,
+                'api_secret' => $apiSecret,
+            ])
+                ->timeout(30)
+                ->post($url, $payload);
+
+            $responseBody = $response->json();
+
+            Log::info('SMS API response', [
+                'status' => $response->status(),
+                'body' => $responseBody,
+                'raw_body' => $response->body(),
+            ]);
+
+            $messageId = $responseBody['data']['shootId'] ?? null;
+
+            if (! $response->successful()) {
+                return [
+                    'success' => false,
+                    'message' => $responseBody['message'] ?? $response->body() ?? 'SMS API request failed.',
+                    'message_id' => $messageId,
+                ];
+            }
+
+            return [
+                'success' => true,
+                'message' => $responseBody['message'] ?? 'SMS sent successfully.',
+                'message_id' => $messageId,
+            ];
+        } catch (\Exception $e) {
+            Log::error('SMS API exception', [
+                'phone' => $phone,
+                'message' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'message_id' => null,
+            ];
+        }
+    }
+
+    private function formatTanzaniaPhone(?string $phone): ?string
+    {
+        if (! $phone) {
+            return null;
+        }
+
+        $phone = preg_replace('/\D/', '', $phone);
+
+        if (! $phone) {
+            return null;
+        }
+
+        if (str_starts_with($phone, '255')) {
+            return $phone;
+        }
+
+        if (str_starts_with($phone, '0')) {
+            return '255' . substr($phone, 1);
+        }
+
+        if (str_starts_with($phone, '7') || str_starts_with($phone, '6')) {
+            return '255' . $phone;
+        }
+
+        return null;
+    }
+
+    private function replaceMessagePlaceholders(string $message, array $row): string
+    {
+        for ($i = 0; $i < count($row); $i++) {
+            $columnLetter = chr(65 + $i);
+            $placeholder = '#' . $columnLetter . '#';
+            $value = $row[$i] ?? '';
+
+            $message = str_replace($placeholder, $value, $message);
+        }
+
+        return $message;
+    }
+
+    private function generateBatchId(): string
+    {
+        return substr(str_shuffle('ABCDEF'), 0, 3) . substr(str_shuffle('123456789'), 0, 7);
+    }
+
+    private function getReaderType($extension)
     {
         switch (strtolower($extension)) {
             case 'xlsx':
@@ -174,7 +270,7 @@ $messageId = $response_data['data']['shootId'] ?? null;
             case 'csv':
                 return \Maatwebsite\Excel\Excel::CSV;
             default:
-                return \Maatwebsite\Excel\Excel::XLSX; // default to XLSX
+                return \Maatwebsite\Excel\Excel::XLSX;
         }
     }
 }

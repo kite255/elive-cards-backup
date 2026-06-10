@@ -6,9 +6,27 @@ use Illuminate\Database\Eloquent\Model;
 
 class GuestQrcode extends Model
 {
-     //relationship between event guests and qrcode
-     public function eventguests()
-     {
-         return $this->belongsTo(EventGuest::class,'event_guests_id');
-     }
+    /**
+     * Allow mass assignment for QR code creation.
+     *
+     * This fixes:
+     * Add [event_guests_id] to fillable property...
+     */
+    protected $guarded = [];
+
+    /**
+     * Relationship between guest QR code and event guest.
+     */
+    public function eventguests()
+    {
+        return $this->belongsTo(EventGuest::class, 'event_guests_id');
+    }
+
+    /**
+     * Optional cleaner relationship name.
+     */
+    public function guest()
+    {
+        return $this->belongsTo(EventGuest::class, 'event_guests_id');
+    }
 }

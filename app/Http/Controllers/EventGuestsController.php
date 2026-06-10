@@ -3,10 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Imports\eventGuestsImport;
+use App\Jobs\CreateCard;
+use App\Jobs\CreateQrcode;
 use App\Models\Event;
+use App\Models\EventCard;
 use App\Models\EventGuest;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
 use RealRashid\SweetAlert\Facades\Alert;
 
@@ -29,7 +34,7 @@ class EventGuestsController extends Controller
     }
 
     /**
-     * Store guests from Excel file.
+     * Store guests from Excel file and generate cards automatically.
      */
     public function store(Request $request)
     {
@@ -48,12 +53,23 @@ class EventGuestsController extends Controller
             );
 
             $guestExcelData = $request->file('guestExcelFile');
-            $user_id = Auth::id();
-            $event_id = $validated['event_id'];
+            $userId = Auth::id();
+            $eventId = $this->resolveId($validated['event_id']);
 
-            Excel::import(new eventGuestsImport($user_id, $event_id), $guestExcelData);
+            if (! $eventId) {
+                Alert::error('Error', 'Invalid event ID.');
 
-            Alert::success('Excel file uploaded successfully', 'Cards creation is in progress.');
+                return redirect()->back();
+            }
+
+            Excel::import(new eventGuestsImport($userId, $eventId), $guestExcelData);
+
+            $this->generateCardsForEvent((int) $eventId);
+
+            Alert::success(
+                'Excel file uploaded successfully',
+                'Invitees uploaded. QR codes and cards generation has started.'
+            );
 
             return redirect()->back();
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -63,7 +79,13 @@ class EventGuestsController extends Controller
                 ->back()
                 ->withErrors($e->validator)
                 ->withInput();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            Log::error('Excel guest upload failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
             Alert::error('Error', 'Make sure the Excel file is in the correct format.');
 
             return redirect()->back();
@@ -83,39 +105,86 @@ class EventGuestsController extends Controller
      */
     public function edit(string $id)
     {
-        $id = decrypt($id);
+        $guestId = $this->resolveId($id);
 
-        $guest = EventGuest::findOrFail($id);
+        if (! $guestId) {
+            Alert::error('Error', 'Invalid guest ID.');
+
+            return redirect()->back();
+        }
+
+        $guest = EventGuest::findOrFail($guestId);
 
         return view('venecardDashboard.eventCard.layoutSections.editguest', compact('guest'));
     }
 
     /**
-     * Update guest phone.
+     * Update guest details and regenerate card.
      */
     public function update(Request $request, string $id)
     {
-        $id = decrypt($id);
+        $guestId = $this->resolveId($id);
+
+        if (! $guestId) {
+            Alert::error('Error', 'Invalid guest ID.');
+
+            return redirect()->back();
+        }
 
         $validated = $request->validate(
             [
+                'guest_name' => 'required|string|max:255',
                 'guest_phone' => 'required|numeric|digits:10',
+                'card_type' => 'required|string|max:255',
+                'group_size' => 'required_if:card_type,GROUP|nullable|numeric|min:1|max:100',
+                'note' => 'nullable|string|max:1000',
             ],
             [
+                'guest_name.required' => 'Guest name is required.',
                 'guest_phone.required' => 'Guest phone is required.',
                 'guest_phone.numeric' => 'Guest phone must contain numbers only.',
                 'guest_phone.digits' => 'Guest phone must be exactly 10 digits.',
+                'card_type.required' => 'Card type is required.',
+                'group_size.required_if' => 'Group size is required for group card.',
+                'group_size.numeric' => 'Group size must be a number.',
+                'group_size.min' => 'Group size must be at least 1.',
+                'group_size.max' => 'Group size must not be more than 100.',
+                'note.max' => 'Note must not exceed 1000 characters.',
             ]
         );
 
-        $guest = EventGuest::findOrFail($id);
+        try {
+            $guest = EventGuest::findOrFail($guestId);
 
-        $guest->guest_phone = ltrim($validated['guest_phone'], '0');
-        $guest->save();
+            $guest->guest_name = $validated['guest_name'];
+            $guest->guest_phone = $this->normalizePhone($validated['guest_phone']);
+            $guest->card_type = $this->formatCardType(
+                $validated['card_type'],
+                $validated['group_size'] ?? null
+            );
+            $guest->note = $validated['note'] ?? null;
+            $guest->save();
 
-        Alert::success($guest->guest_name, 'has been updated successfully.');
+            $this->generateCardsForEvent((int) $guest->event_id);
 
-        return redirect()->route('events.show', encrypt($guest->event_id));
+            Alert::success(
+                $guest->guest_name,
+                'has been updated successfully. Card regeneration has started.'
+            );
+
+            return redirect()->route('events.show', encrypt($guest->event_id));
+        } catch (\Throwable $e) {
+            Log::error('Guest update failed', [
+                'guest_id' => $guestId,
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            Alert::error('Error', 'Guest was not updated. Please check the logs.');
+
+            return redirect()->back()->withInput();
+        }
     }
 
     /**
@@ -123,21 +192,40 @@ class EventGuestsController extends Controller
      */
     public function destroy(string $id)
     {
-        $id = decrypt($id);
+        $guestId = $this->resolveId($id);
 
-        $guest = EventGuest::findOrFail($id);
-        $eventId = $guest->event_id;
-        $guestName = $guest->guest_name;
+        if (! $guestId) {
+            Alert::error('Error', 'Invalid guest ID.');
 
-        $guest->delete();
+            return redirect()->back();
+        }
 
-        Alert::success($guestName, 'has been deleted successfully.');
+        try {
+            $guest = EventGuest::findOrFail($guestId);
+            $eventId = $guest->event_id;
+            $guestName = $guest->guest_name;
 
-        return redirect()->route('events.show', encrypt($eventId));
+            $guest->delete();
+
+            Alert::success($guestName, 'has been deleted successfully.');
+
+            return redirect()->route('events.show', encrypt($eventId));
+        } catch (\Throwable $e) {
+            Log::error('Guest delete failed', [
+                'guest_id' => $guestId,
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            Alert::error('Error', 'Guest was not deleted. Please check the logs.');
+
+            return redirect()->back();
+        }
     }
 
     /**
-     * Add one guest manually.
+     * Add one guest manually and generate card automatically.
      */
     public function addSingleGuest(Request $request, $eventId)
     {
@@ -158,6 +246,8 @@ class EventGuestsController extends Controller
                     'cardType.required' => 'Card type is required.',
                     'groupSize.required_if' => 'Group size is required for group card.',
                     'groupSize.numeric' => 'Group size must be a number.',
+                    'groupSize.min' => 'Group size must be at least 1.',
+                    'groupSize.max' => 'Group size must not be more than 100.',
                     'note.max' => 'Note must not exceed 1000 characters.',
                 ]
             );
@@ -170,45 +260,161 @@ class EventGuestsController extends Controller
                 ->withInput();
         }
 
-        $userId = Auth::id();
-        $event_id = decrypt($eventId);
+        try {
+            $userId = Auth::id();
+            $eventId = $this->resolveId($eventId);
 
-        $event = Event::find($event_id);
+            if (! $eventId) {
+                Alert::error('Error', 'Invalid event ID.');
 
-        if (! $event) {
-            Alert::error('Error', 'Event not found.');
+                return redirect()->back();
+            }
+
+            $event = Event::find($eventId);
+
+            if (! $event) {
+                Alert::error('Error', 'Event not found.');
+
+                return redirect()->back();
+            }
+
+            $guest = new EventGuest();
+            $guest->user_id = $userId;
+            $guest->event_id = $eventId;
+            $guest->guest_name = $validated['guestName'];
+            $guest->guest_phone = $this->normalizePhone($validated['guestPhone']);
+            $guest->card_type = $this->formatCardType(
+                $validated['cardType'],
+                $validated['groupSize'] ?? null
+            );
+            $guest->note = $validated['note'] ?? null;
+            $guest->invitation_code = $this->generateUniqueInvitationCode((int) $eventId);
+            $guest->save();
+
+            $this->generateCardsForEvent((int) $eventId);
+
+            Alert::success(
+                $validated['guestName'],
+                'has been added successfully. QR code and card generation has started.'
+            );
 
             return redirect()->back();
+        } catch (\Throwable $e) {
+            Log::error('Manual guest add failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            Alert::error('Error', 'Guest was not added. Please check the logs.');
+
+            return redirect()->back()->withInput();
+        }
+    }
+
+    /**
+     * Generate QR codes and cards for an event.
+     *
+     * CreateQrcode and CreateCard use EVENT ID, not guest ID.
+     */
+    private function generateCardsForEvent(int $eventId): void
+    {
+        $eventHasCard = EventCard::where('event_id', $eventId)->exists();
+
+        if (! $eventHasCard) {
+            Log::warning('Card generation skipped because this event has no card template.', [
+                'event_id' => $eventId,
+            ]);
+
+            return;
         }
 
-        $guest = new EventGuest();
-        $guest->user_id = $userId;
-        $guest->event_id = $event_id;
-        $guest->guest_name = $validated['guestName'];
-        $guest->guest_phone = ltrim($validated['guestPhone'], '0');
+        try {
+            CreateQrcode::dispatch($eventId);
+            CreateCard::dispatch($eventId);
+        } catch (\Throwable $e) {
+            Log::error('QR/card generation failed', [
+                'event_id' => $eventId,
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+        }
+    }
 
-        $guest->card_type = $validated['cardType'] === 'GROUP'
-            ? 'WATU ' . ($validated['groupSize'] ?? 1)
-            : $validated['cardType'];
+    /**
+     * Accept encrypted IDs and plain numeric IDs safely.
+     */
+    private function resolveId($id): ?int
+    {
+        if (is_numeric($id)) {
+            return (int) $id;
+        }
 
-        // Optional note
-        $guest->note = $validated['note'] ?? null;
+        try {
+            $decrypted = decrypt($id);
 
-        // Generate unique invitation code per event
+            return is_numeric($decrypted) ? (int) $decrypted : null;
+        } catch (DecryptException $e) {
+            Log::warning('Invalid encrypted ID received', [
+                'id' => $id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return null;
+        } catch (\Throwable $e) {
+            Log::warning('ID resolution failed', [
+                'id' => $id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Convert local number into stored format without leading zero.
+     *
+     * Example:
+     * 0768461644 becomes 768461644
+     */
+    private function normalizePhone(string $phone): string
+    {
+        $phone = preg_replace('/\D+/', '', $phone);
+
+        return ltrim($phone, '0');
+    }
+
+    /**
+     * Format the card type before saving.
+     *
+     * Example:
+     * GROUP + 5 becomes WATU 5
+     */
+    private function formatCardType(string $cardType, $groupSize = null): string
+    {
+        $cardType = strtoupper(trim($cardType));
+
+        if ($cardType === 'GROUP') {
+            return 'WATU ' . ((int) $groupSize ?: 1);
+        }
+
+        return $cardType;
+    }
+
+    /**
+     * Generate unique invitation code per event.
+     */
+    private function generateUniqueInvitationCode(int $eventId): int
+    {
         do {
             $generatedCode = rand(100000, 999999);
 
-            $exists = EventGuest::where('event_id', $event_id)
+            $exists = EventGuest::where('event_id', $eventId)
                 ->where('invitation_code', $generatedCode)
                 ->exists();
         } while ($exists);
 
-        $guest->invitation_code = $generatedCode;
-
-        $guest->save();
-
-        Alert::success($validated['guestName'], 'has been added successfully.');
-
-        return redirect()->back();
+        return $generatedCode;
     }
 }
