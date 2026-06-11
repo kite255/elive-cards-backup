@@ -41,7 +41,7 @@
         border: 1px solid #ddd;
     }
 
-    .exel-sample {
+    .excel-sample {
         font-size: 0.7rem;
         color: #198754;
     }
@@ -154,16 +154,16 @@
         </div>
 
         <div class="row">
-            <h5 class="card-title mb-0">Import exel</h5>
+            <h5 class="card-title mb-0">Import Excel</h5>
             <form action="{{ route('guests.store') }}" method="POST" enctype="multipart/form-data">
                 @csrf
                 <div class="file-upload-container rounded bg-light mt-2">
                     <input type="text" value="{{ $event->id }}" name="event_id" hidden>
                     <input type="file" class="form-control" name="guestExcelFile" accept=".xlsx,.xls">
                 </div>
-                <button class="btn btn-success mt-2">upload Exel</button>
+                <button type="submit" class="btn btn-success mt-2">Upload Excel</button>
             </form>
-            <p class="exel-sample">
+            <p class="excel-sample">
                 <a href="{{ route('downloadexcelsample') }}">Download Excel sample</a>
             </p>
         </div>
@@ -178,12 +178,12 @@
                     @csrf
                     <div class="mb-3">
                         <input type="text" class="form-control" id="guestName" name="guestName"
-                            placeholder="guest name" required>
+                            placeholder="Guest name" required>
                     </div>
 
                     <div class="mb-3">
                         <input type="text" class="form-control" id="guest_phone" name="guestPhone"
-                            placeholder="phone number eg. 07.. / 06.." maxlength="10" required>
+                            placeholder="Phone number e.g. 07.. / 06.." maxlength="12" required>
                     </div>
 
                     <div class="mb-3">
@@ -271,14 +271,6 @@
         <!-- add single event guest -->
 
     </div>
-
-    <script>
-        document.getElementById('addGuestButton').addEventListener('click', function() {
-            var modal = new bootstrap.Modal(document.getElementById('addGuestModal'));
-            modal.show();
-        });
-    </script>
-
 
 </div>
 <div class="row">
@@ -396,6 +388,14 @@
                         $cardStoragePath = storage_path('app/public/' . $cardRelativePath);
                         $guestCardFileExists = file_exists($cardPublicPath) || file_exists($cardStoragePath);
                     }
+
+                    $whatsappPhone = preg_replace('/\D/', '', (string) $guest->guest_phone);
+
+                    if (str_starts_with($whatsappPhone, '0')) {
+                        $whatsappPhone = '255' . substr($whatsappPhone, 1);
+                    } elseif ($whatsappPhone !== '' && ! str_starts_with($whatsappPhone, '255')) {
+                        $whatsappPhone = '255' . $whatsappPhone;
+                    }
                 @endphp
                 <tr>
                     <th>{{ $loop->iteration + ($guests->currentPage() - 1) * $guests->perPage() }}</th>
@@ -412,8 +412,13 @@
                         @endif
                         {{ $guest->guest_name }}
                     </td>
-                    <td><a href="https://wa.me/{{ '255' . $guest->guest_phone }}"
-                            target="_blank">{{ '255' . $guest->guest_phone }}</a></td>
+                    <td>
+                        @if ($whatsappPhone)
+                            <a href="https://wa.me/{{ $whatsappPhone }}" target="_blank">{{ $whatsappPhone }}</a>
+                        @else
+                            <span class="text-muted">No phone</span>
+                        @endif
+                    </td>
                     <td>{{ $guest->card_type }}</td>
                     <td>{{ $guest->note }}</td>
                     <td>
@@ -555,26 +560,42 @@
 
 
 <script>
+    const guestModal = document.getElementById('guestModal');
+    const addGuestButton = document.getElementById('addGuestButton');
+    const closeModalButton = document.getElementById('closeModal');
+
     // Function to open the modal and store state
     function openModal() {
-        document.getElementById('guestModal').classList.add('active');
+        if (! guestModal) {
+            return;
+        }
+
+        guestModal.classList.add('active');
         localStorage.setItem('modalState', 'open');
     }
 
     // Function to close the modal and update state
     function closeModal() {
-        document.getElementById('guestModal').classList.remove('active');
+        if (! guestModal) {
+            return;
+        }
+
+        guestModal.classList.remove('active');
         localStorage.setItem('modalState', 'closed');
     }
 
-    // Event Listeners for buttons
-    document.getElementById('addGuestButton').addEventListener('click', openModal);
-    document.getElementById('closeModal').addEventListener('click', closeModal);
+    if (addGuestButton) {
+        addGuestButton.addEventListener('click', openModal);
+    }
+
+    if (closeModalButton) {
+        closeModalButton.addEventListener('click', closeModal);
+    }
 
     // Check localStorage for modal state on page load
     document.addEventListener('DOMContentLoaded', function() {
-        if (localStorage.getItem('modalState') === 'open') {
-            document.getElementById('guestModal').classList.add('active');
+        if (guestModal && localStorage.getItem('modalState') === 'open') {
+            guestModal.classList.add('active');
         }
 
         // Add click event listeners for three dots menus
