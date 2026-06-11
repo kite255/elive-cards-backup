@@ -560,7 +560,7 @@
                     </div>
                 </div>
 
-                <div class="d-flex gap-2 mt-2">
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
                     <button type="button" class="btn btn-sm btn-outline-primary" id="changeBtn">
                         {{ $hasCard ? 'Change Card Image' : 'Choose Card Image' }}
                     </button>
@@ -575,6 +575,8 @@
                             Save & Download Sample Guest Card
                         </a>
                     @endif
+
+                    <span id="saveStatusText" class="small text-muted"></span>
                 </div>
 
                 <small class="text-muted d-block mt-2">
@@ -712,14 +714,16 @@
                 </div>
             </div>
 
-            <div class="d-flex gap-2 mt-4 mb-4">
-                <button type="submit" class="btn btn-primary">
-                    {{ $hasCard ? 'Update Card Settings' : 'Save Card Settings' }}
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-4 mb-4">
+                <button type="submit" class="btn btn-primary" id="saveCardLayoutBtn">
+                    {{ $hasCard ? 'Save Card Layout' : 'Save Card Settings' }}
                 </button>
 
                 <button type="button" class="btn btn-outline-secondary" id="resetPlaceholdersBtn">
                     Reset Positions
                 </button>
+
+                <span id="manualSaveStatusText" class="small text-muted"></span>
             </div>
                         </div>
                     </div>
@@ -843,13 +847,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const container = document.getElementById('upload-container');
     const stage = document.getElementById('cardDesignerStage');
-    const viewport = document.getElementById('cardDesignerViewport');
     const fileInput = document.getElementById('fileInput');
     const previewImage = document.getElementById('previewImage');
     const changeBtn = document.getElementById('changeBtn');
     const resetBtn = document.getElementById('resetPlaceholdersBtn');
     const cardSettingsForm = document.getElementById('cardSettingsForm');
     const downloadBtn = document.getElementById('downloadSampleCardBtn');
+    const saveCardLayoutBtn = document.getElementById('saveCardLayoutBtn');
 
     const guestNamePlaceholder = document.getElementById('guestNamePlaceholder');
     const cardTypePlaceholder = document.getElementById('cardTypePlaceholder');
@@ -862,6 +866,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const qrCodeForegroundColor = document.getElementById('qrCodeForegroundColor');
     const qrCodeBackgroundColor = document.getElementById('qrCodeBackgroundColor');
+    const qrCodeEyeColor = document.getElementById('qrCodeEyeColor');
     const qrCodeSizeInput = document.getElementById('qrCodeSizeInput');
     const qrCodeSizeHidden = document.getElementById('qrCodeSize');
 
@@ -869,9 +874,89 @@ document.addEventListener('DOMContentLoaded', function () {
     const qrcodePositionSelect = document.getElementById('qrcodePositionSelect');
     const qrcodePosition = document.getElementById('qrcodePosition');
 
+    let hasUnsavedChanges = false;
+    let saveStatusTimeout = null;
+
     if (!container) return;
 
     fitWholeCardInView();
+
+    function setSaveStatus(message = '', type = 'muted') {
+        const statusItems = [
+            document.getElementById('saveStatusText'),
+            document.getElementById('manualSaveStatusText'),
+        ].filter(Boolean);
+
+        if (saveStatusTimeout) {
+            clearTimeout(saveStatusTimeout);
+            saveStatusTimeout = null;
+        }
+
+        statusItems.forEach(function (item) {
+            item.className = 'small';
+
+            if (type === 'success') {
+                item.classList.add('text-success');
+            } else if (type === 'error') {
+                item.classList.add('text-danger');
+            } else if (type === 'warning') {
+                item.classList.add('text-warning');
+            } else {
+                item.classList.add('text-muted');
+            }
+
+            item.textContent = message;
+        });
+
+        if (message && type === 'success') {
+            saveStatusTimeout = setTimeout(function () {
+                statusItems.forEach(function (item) {
+                    item.textContent = '';
+                    item.className = 'small text-muted';
+                });
+            }, 3000);
+        }
+    }
+
+    function markUnsaved() {
+        hasUnsavedChanges = true;
+        setSaveStatus('Unsaved changes', 'warning');
+    }
+
+    async function saveCardLayout(showSuccessMessage = true) {
+        if (!cardSettingsForm) {
+            throw new Error('Card settings form was not found.');
+        }
+
+        const formData = new FormData(cardSettingsForm);
+
+        setSaveStatus('Saving...', 'muted');
+
+        const response = await fetch(cardSettingsForm.action, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json,text/html,*/*',
+            },
+            credentials: 'same-origin',
+            redirect: 'follow',
+        });
+
+        const responseText = await response.text();
+
+        if (!response.ok) {
+            throw new Error('Save failed. Status: ' + response.status + '. Response: ' + responseText);
+        }
+
+        hasUnsavedChanges = false;
+
+        if (showSuccessMessage) {
+            setSaveStatus('Saved successfully', 'success');
+        }
+
+        return true;
+    }
 
     if (changeBtn && fileInput) {
         changeBtn.addEventListener('click', function () {
@@ -899,8 +984,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
             reader.onload = function (event) {
                 previewImage.src = event.target.result;
+                previewImage.dataset.originalSrc = event.target.result;
                 previewImage.style.display = 'block';
+
+                const missingNotice = document.getElementById('cardImageMissingNotice');
+                if (missingNotice) missingNotice.classList.add('d-none');
+
                 previewImage.onload = fitWholeCardInView;
+                markUnsaved();
             };
 
             reader.readAsDataURL(file);
@@ -916,6 +1007,12 @@ document.addEventListener('DOMContentLoaded', function () {
     bindStyleInput(guestNameColor, guestNamePlaceholder, 'color');
     bindStyleInput(cardTypeColor, cardTypePlaceholder, 'color');
 
+    [guestNameFontSize, cardTypeFontSize, guestNameColor, cardTypeColor, qrCodeForegroundColor, qrCodeBackgroundColor, qrCodeEyeColor, qrCodeSizeInput, toggleGuestName, qrcodePositionSelect].forEach(function (input) {
+        if (!input) return;
+        input.addEventListener('input', markUnsaved);
+        input.addEventListener('change', markUnsaved);
+    });
+
     if (qrCodeForegroundColor && qrPlaceholder) {
         qrCodeForegroundColor.addEventListener('input', function () {
             qrPlaceholder.style.setProperty('--qr-main-color', this.value);
@@ -925,6 +1022,12 @@ document.addEventListener('DOMContentLoaded', function () {
     if (qrCodeBackgroundColor && qrPlaceholder) {
         qrCodeBackgroundColor.addEventListener('input', function () {
             qrPlaceholder.style.setProperty('--qr-bg-color', this.value);
+        });
+    }
+
+    if (qrCodeEyeColor && qrPlaceholder) {
+        qrCodeEyeColor.addEventListener('input', function () {
+            qrPlaceholder.style.setProperty('--qr-eye-color', this.value);
         });
     }
 
@@ -960,6 +1063,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if (value === 'right') {
                 setPlaceholderPosition(qrPlaceholder, 315, 500);
             }
+
+            markUnsaved();
         });
     }
 
@@ -971,6 +1076,16 @@ document.addEventListener('DOMContentLoaded', function () {
 
             if (qrcodePosition) qrcodePosition.value = 'right';
             if (qrcodePositionSelect) qrcodePositionSelect.value = 'right';
+
+            markUnsaved();
+        });
+    }
+
+    if (cardSettingsForm && saveCardLayoutBtn) {
+        cardSettingsForm.addEventListener('submit', function () {
+            saveCardLayoutBtn.disabled = true;
+            saveCardLayoutBtn.textContent = 'Saving...';
+            setSaveStatus('Saving...', 'muted');
         });
     }
 
@@ -982,34 +1097,36 @@ document.addEventListener('DOMContentLoaded', function () {
             const originalText = this.textContent;
 
             this.classList.add('disabled');
+            this.setAttribute('aria-disabled', 'true');
             this.textContent = 'Saving...';
 
             try {
-                const formData = new FormData(cardSettingsForm);
+                await saveCardLayout(true);
 
-                const response = await fetch(cardSettingsForm.action, {
-                    method: 'POST',
-                    body: formData,
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Accept': 'application/json,text/html,*/*',
-                    },
-                    credentials: 'same-origin',
-                    redirect: 'follow',
-                });
+                this.textContent = 'Downloading...';
 
-                if (!response.ok) {
-                    throw new Error('Save failed');
-                }
+                setTimeout(function () {
+                    window.location.href = downloadUrl;
+                }, 500);
 
-                window.location.href = downloadUrl;
+                setTimeout(() => {
+                    this.classList.remove('disabled');
+                    this.removeAttribute('aria-disabled');
+                    this.textContent = originalText;
+                }, 2500);
             } catch (error) {
-                alert('Please click Update Card Settings first, then download again.');
+                console.error('Card layout save before download failed:', error);
+                setSaveStatus('Save failed. Try again.', 'error');
+
                 this.classList.remove('disabled');
+                this.removeAttribute('aria-disabled');
                 this.textContent = originalText;
+
+                alert('Card layout could not be saved. Please try Save Card Layout first, then download again.');
             }
         });
     }
+
     function fitWholeCardInView() {
         if (!stage) return;
         stage.style.transform = 'none';
@@ -1076,6 +1193,8 @@ document.addEventListener('DOMContentLoaded', function () {
             document.removeEventListener('mouseup', stopDrag);
             document.removeEventListener('touchmove', drag);
             document.removeEventListener('touchend', stopDrag);
+
+            markUnsaved();
         }
     }
 
@@ -1113,3 +1232,4 @@ document.addEventListener('DOMContentLoaded', function () {
 </script>
 
 </div>
+m

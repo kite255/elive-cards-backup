@@ -39,6 +39,10 @@ class CreateCardController extends Controller
                 $event = Event::with('eventCard')->find($guest->event_id);
 
                 if (! $event || ! $event->eventCard) {
+                    Log::warning('Card generation skipped because event or event card is missing.', [
+                        'guest_id' => $guest->id,
+                        'event_id' => $guest->event_id,
+                    ]);
                     continue;
                 }
 
@@ -48,6 +52,10 @@ class CreateCardController extends Controller
                     $qrcodeName = $this->ensureGuestQrcode($guest, $event);
 
                     if (! $qrcodeName) {
+                        Log::warning('Card generation skipped because QR code could not be created.', [
+                            'guest_id' => $guest->id,
+                            'event_id' => $event->id,
+                        ]);
                         continue;
                     }
                 }
@@ -64,7 +72,7 @@ class CreateCardController extends Controller
                     File::makeDirectory($cardDirectory, 0775, true);
                 }
 
-                $imageFileName = 'card_yako_' . uniqid() . '.jpg';
+                $imageFileName = 'card_yako_' . uniqid('', true) . '.jpg';
                 $imagePath = $cardDirectory . DIRECTORY_SEPARATOR . $imageFileName;
 
                 $qrPath = $qrcodeName
@@ -73,8 +81,8 @@ class CreateCardController extends Controller
 
                 $this->generateCardImage(
                     event: $event,
-                    guestName: $guest->guest_name,
-                    guestCardType: $guest->card_type,
+                    guestName: (string) $guest->guest_name,
+                    guestCardType: (string) $guest->card_type,
                     outputPath: $imagePath,
                     qrPath: $qrPath
                 );
@@ -97,12 +105,7 @@ class CreateCardController extends Controller
 
             return response()->json(['message' => 'QR codes and cards created successfully.']);
         } catch (\Throwable $e) {
-            Log::build([
-                'driver' => 'single',
-                'path' => storage_path('logs/create_card_controller_errors.log'),
-            ])->error('CreateCardController Failed: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
-            ]);
+            $this->logError('CreateCardController index failed.', $e);
 
             return response()->json(['error' => 'Failed to create cards or QR codes.'], 500);
         }
@@ -110,47 +113,53 @@ class CreateCardController extends Controller
 
     public function downloadSampleCard($id)
     {
-        $id = decrypt($id);
-        $event = Event::with('eventCard')->findOrFail($id);
+        try {
+            $id = decrypt($id);
+            $event = Event::with('eventCard')->findOrFail($id);
 
-        if (! $event->eventCard) {
-            abort(404, 'Event card template not found.');
+            if (! $event->eventCard) {
+                abort(404, 'Event card template not found.');
+            }
+
+            $sampleDirectory = storage_path('app/public/guestsamplecard');
+
+            if (! File::exists($sampleDirectory)) {
+                File::makeDirectory($sampleDirectory, 0775, true);
+            }
+
+            $outputPath = $sampleDirectory . DIRECTORY_SEPARATOR . $event->code . '.jpg';
+
+            if (File::exists($outputPath)) {
+                File::delete($outputPath);
+            }
+
+            // Always show QR on sample download so testing is accurate.
+            $sampleQrPath = $sampleDirectory . DIRECTORY_SEPARATOR . $event->code . '_sample_qr.png';
+            $sampleQrBinary = QrCode::format('png')
+                ->size(500)
+                ->margin(1)
+                ->generate('ELIVECARD-SAMPLE-' . $event->code);
+
+            File::put($sampleQrPath, $sampleQrBinary);
+
+            $this->generateCardImage(
+                event: $event,
+                guestName: 'Mr & Mrs John Doe',
+                guestCardType: 'DOUBLE',
+                outputPath: $outputPath,
+                qrPath: $sampleQrPath
+            );
+
+            if (File::exists($sampleQrPath)) {
+                File::delete($sampleQrPath);
+            }
+
+            return response()->download($outputPath, $event->name . '_sample_card.jpg');
+        } catch (\Throwable $e) {
+            $this->logError('Sample card download failed.', $e, ['encrypted_event_id' => $id]);
+
+            abort(500, 'Failed to generate sample card. Check storage/logs/create_card_controller_errors.log');
         }
-
-        $sampleDirectory = storage_path('app/public/guestsamplecard');
-
-        if (! File::exists($sampleDirectory)) {
-            File::makeDirectory($sampleDirectory, 0775, true);
-        }
-
-        $outputPath = $sampleDirectory . DIRECTORY_SEPARATOR . $event->code . '.jpg';
-
-        if (File::exists($outputPath)) {
-            unlink($outputPath);
-        }
-
-        // Always show QR on sample download so testing is accurate.
-        $sampleQrBinary = QrCode::format('png')
-            ->size(500)
-            ->margin(1)
-            ->generate('ELIVECARD-SAMPLE-' . $event->code);
-
-        $sampleQrPath = $sampleDirectory . DIRECTORY_SEPARATOR . $event->code . '_sample_qr.png';
-        file_put_contents($sampleQrPath, $sampleQrBinary);
-
-        $this->generateCardImage(
-            event: $event,
-            guestName: 'Mr & Mrs John Doe',
-            guestCardType: 'DOUBLE',
-            outputPath: $outputPath,
-            qrPath: $sampleQrPath
-        );
-
-        if (File::exists($sampleQrPath)) {
-            unlink($sampleQrPath);
-        }
-
-        return response()->download($outputPath, $event->name . '_sample_card.jpg');
     }
 
     private function ensureGuestQrcode(EventGuest $guest, Event $event): ?string
@@ -158,10 +167,23 @@ class CreateCardController extends Controller
         $hasQrCode = GuestQrcode::where('event_guests_id', $guest->id)->first();
 
         if ($hasQrCode) {
-            return $hasQrCode->qrcode_name;
+            $existingPath = storage_path("app/public/qrcodes/{$event->code}/{$hasQrCode->qrcode_name}");
+
+            if (File::exists($existingPath) && File::size($existingPath) > 0) {
+                return $hasQrCode->qrcode_name;
+            }
         }
 
         $qrCodeValue = $guest->invitation_code;
+
+        if (! $qrCodeValue) {
+            Log::warning('Guest QR code skipped because invitation_code is empty.', [
+                'guest_id' => $guest->id,
+                'event_id' => $event->id,
+            ]);
+            return null;
+        }
+
         $qrCodeDirectory = storage_path("app/public/qrcodes/{$event->code}");
 
         if (! File::exists($qrCodeDirectory)) {
@@ -173,10 +195,22 @@ class CreateCardController extends Controller
             ->margin(1)
             ->generate($qrCodeValue);
 
-        $qrCodeFileName = uniqid() . '.png';
+        $qrCodeFileName = uniqid('', true) . '.png';
         $qrCodePath = $qrCodeDirectory . DIRECTORY_SEPARATOR . $qrCodeFileName;
 
-        file_put_contents($qrCodePath, $qrCode);
+        File::put($qrCodePath, $qrCode);
+
+        if (! File::exists($qrCodePath) || File::size($qrCodePath) <= 0) {
+            return null;
+        }
+
+        if ($hasQrCode) {
+            $hasQrCode->qrcode_name = $qrCodeFileName;
+            $hasQrCode->has_qrcode = '1';
+            $hasQrCode->save();
+
+            return $qrCodeFileName;
+        }
 
         $qrCodeDetails = new GuestQrcode();
         $qrCodeDetails->event_guests_id = $guest->id;
@@ -190,10 +224,17 @@ class CreateCardController extends Controller
     private function generateCardImage(Event $event, string $guestName, string $guestCardType, string $outputPath, ?string $qrPath = null): void
     {
         $eventCard = $event->eventCard;
-        $templatePath = $this->resolvePublicStoragePath($eventCard->card_name);
 
-        if (! $templatePath || ! File::exists($templatePath)) {
-            throw new \RuntimeException('Card template image was not found: ' . $eventCard->card_name);
+        if (! $eventCard) {
+            throw new \RuntimeException('Event card relation is missing.');
+        }
+
+        // Prefer image field, then fallback to card_name.
+        $templateRelativePath = $eventCard->image ?: $eventCard->card_name;
+        $templatePath = $this->resolvePublicStoragePath($templateRelativePath);
+
+        if (! $templatePath || ! File::exists($templatePath) || File::size($templatePath) <= 0) {
+            throw new \RuntimeException('Card template image was not found or is empty: ' . ($templateRelativePath ?: 'NULL'));
         }
 
         $template = $this->createImageFromFile($templatePath);
@@ -205,7 +246,6 @@ class CreateCardController extends Controller
         $originalWidth = imagesx($template);
         $originalHeight = imagesy($template);
 
-        // Permanent fix: download canvas must be exactly the same as the preview canvas.
         $width = $this->designWidth;
         $height = $this->designHeight;
 
@@ -217,7 +257,6 @@ class CreateCardController extends Controller
         imagecopyresampled($canvas, $template, 0, 0, 0, 0, $width, $height, $originalWidth, $originalHeight);
         imagedestroy($template);
 
-        // Positions are exact pixels, not percentages.
         $guestNameX = $this->pixelValue($eventCard->guestPositionX ?? 210, $width);
         $guestNameY = $this->pixelValue($eventCard->guestPositionY ?? 115, $height);
 
@@ -247,7 +286,7 @@ class CreateCardController extends Controller
             colorHex: $eventCard->guest_cardtype_color ?? '#000000'
         );
 
-        if ($qrPath && File::exists($qrPath)) {
+        if ($qrPath && File::exists($qrPath) && File::size($qrPath) > 0) {
             $this->placeQrCode($canvas, $qrPath, $qrX, $qrY, $qrSize);
         }
 
@@ -255,8 +294,25 @@ class CreateCardController extends Controller
             File::makeDirectory(dirname($outputPath), 0775, true);
         }
 
-        imagejpeg($canvas, $outputPath, 95);
+        // Atomic write prevents half-written/corrupt images if the request stops mid-save.
+        $temporaryOutputPath = $outputPath . '.tmp';
+
+        if (File::exists($temporaryOutputPath)) {
+            File::delete($temporaryOutputPath);
+        }
+
+        imagejpeg($canvas, $temporaryOutputPath, 95);
         imagedestroy($canvas);
+
+        if (! File::exists($temporaryOutputPath) || File::size($temporaryOutputPath) <= 0) {
+            throw new \RuntimeException('Generated card image could not be saved: ' . $temporaryOutputPath);
+        }
+
+        if (File::exists($outputPath)) {
+            File::delete($outputPath);
+        }
+
+        File::move($temporaryOutputPath, $outputPath);
     }
 
     private function resolvePublicStoragePath(?string $relativePath): ?string
@@ -265,7 +321,19 @@ class CreateCardController extends Controller
             return null;
         }
 
-        $cleanPath = ltrim(str_replace(['storage/', 'public/'], '', $relativePath), '/\\');
+        $cleanPath = str_replace('\\', '/', $relativePath);
+        $cleanPath = trim($cleanPath);
+        $cleanPath = preg_replace('#^/+#', '', $cleanPath);
+        $cleanPath = preg_replace('#^(storage/|public/|app/public/)+#', '', $cleanPath);
+
+        // Never use temporary upload paths for permanent card generation.
+        if (
+            str_contains($cleanPath, 'livewire-tmp/') ||
+            str_starts_with($cleanPath, 'tmp/') ||
+            str_contains($cleanPath, '/tmp/')
+        ) {
+            return null;
+        }
 
         $possiblePaths = [
             storage_path('app/public/' . $cleanPath),
@@ -280,7 +348,7 @@ class CreateCardController extends Controller
         }
 
         foreach ($possiblePaths as $path) {
-            if (File::exists($path)) {
+            if (File::exists($path) && File::size($path) > 0) {
                 return $path;
             }
         }
@@ -293,10 +361,10 @@ class CreateCardController extends Controller
         $mimeType = File::mimeType($path);
 
         return match ($mimeType) {
-            'image/jpeg', 'image/jpg' => imagecreatefromjpeg($path),
-            'image/png' => imagecreatefrompng($path),
-            'image/webp' => function_exists('imagecreatefromwebp') ? imagecreatefromwebp($path) : null,
-            default => imagecreatefromstring(file_get_contents($path)),
+            'image/jpeg', 'image/jpg' => @imagecreatefromjpeg($path),
+            'image/png' => @imagecreatefrompng($path),
+            'image/webp' => function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($path) : null,
+            default => @imagecreatefromstring(File::get($path)),
         };
     }
 
@@ -344,7 +412,7 @@ class CreateCardController extends Controller
 
     private function placeQrCode($image, string $qrPath, int $centerX, int $centerY, int $qrSize): void
     {
-        $qrImage = imagecreatefrompng($qrPath);
+        $qrImage = @imagecreatefrompng($qrPath);
 
         if (! $qrImage) {
             return;
@@ -353,6 +421,7 @@ class CreateCardController extends Controller
         $x = (int) round($centerX - ($qrSize / 2));
         $y = (int) round($centerY - ($qrSize / 2));
 
+        // Keep QR visible and scannable.
         $white = imagecolorallocate($image, 255, 255, 255);
         imagefilledrectangle($image, $x, $y, $x + $qrSize, $y + $qrSize, $white);
 
@@ -372,21 +441,21 @@ class CreateCardController extends Controller
         imagedestroy($qrImage);
     }
 
-    private function pixelValue(float|int|string $value, int $max): int
+    private function pixelValue(float|int|string|null $value, int $max): int
     {
-        $pixel = (int) round((float) $value);
+        $pixel = (int) round((float) ($value ?? 0));
         return max(0, min($pixel, $max));
     }
 
-    private function pixelSize(float|int|string $value, int $min, int $max): int
+    private function pixelSize(float|int|string|null $value, int $min, int $max): int
     {
-        $size = (int) round((float) $value);
+        $size = (int) round((float) ($value ?? $min));
         return max($min, min($size, $max));
     }
 
-    private function exactFontSize(float|int|string $fontSize, int $min = 1): int
+    private function exactFontSize(float|int|string|null $fontSize, int $min = 1): int
     {
-        return max($min, (int) round((float) $fontSize));
+        return max($min, (int) round((float) ($fontSize ?? $min)));
     }
 
     private function defaultQrPosition(string $position): array
@@ -439,5 +508,15 @@ class CreateCardController extends Controller
         }
 
         return null;
+    }
+
+    private function logError(string $message, \Throwable $e, array $context = []): void
+    {
+        Log::build([
+            'driver' => 'single',
+            'path' => storage_path('logs/create_card_controller_errors.log'),
+        ])->error($message . ' ' . $e->getMessage(), array_merge($context, [
+            'trace' => $e->getTraceAsString(),
+        ]));
     }
 }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\EventCard;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RealRashid\SweetAlert\Facades\Alert;
@@ -12,7 +13,7 @@ use RealRashid\SweetAlert\Facades\Alert;
 class EventCardController extends Controller
 {
     /**
-     * Storage folder for event card sample images.
+     * Permanent storage folder for event card template/sample images.
      */
     private string $cardImageFolder = 'eventCardSamples';
 
@@ -36,6 +37,10 @@ class EventCardController extends Controller
                 [
                     'event_id' => 'required|exists:events,id',
 
+                    /*
+                     * This is the original card/template image.
+                     * It is stored permanently in storage/app/public/eventCardSamples.
+                     */
                     'image' => 'required|image|mimes:jpg,jpeg,png,webp|max:5120',
 
                     // Guest name placeholder - PIXEL positions
@@ -86,8 +91,9 @@ class EventCardController extends Controller
 
             /*
              * Permanent image compatibility:
-             * - card_name is used by existing card generation code
-             * - image is used by the newer preview/layout code
+             * - card_name is used by existing card generation code.
+             * - image is used by newer preview/layout code.
+             * Both columns must contain the same permanent relative path.
              */
             $eventCard->card_name = $path;
             $eventCard->image = $path;
@@ -168,16 +174,16 @@ class EventCardController extends Controller
              * Do NOT delete the old image immediately.
              *
              * Reason:
-             * Some browsers/pages may still request the previous filename after save.
-             * Deleting the old file immediately causes broken image/404 and looks like
-             * the image is "corrupted". Keep old images until you run a cleanup job.
+             * Some browsers/pages may still request the previous filename after saving.
+             * Deleting the old file immediately causes 404/broken previews and looks like
+             * the image is "corrupted". Keep old images until you run a cleanup command/job.
              */
             $eventCard->card_name = $path;
             $eventCard->image = $path;
         } else {
             /*
              * Important permanent fix:
-             * When saving only positions/settings, preserve the existing image path.
+             * When saving only positions/settings, preserve the existing permanent image path.
              */
             $existingImage = $this->normalizeStoragePath($eventCard->image ?: $eventCard->card_name);
 
@@ -202,36 +208,60 @@ class EventCardController extends Controller
     }
 
     /**
-     * Store uploaded card image in public disk.
+     * Store uploaded card image permanently in the public disk.
+     *
+     * Returned path example:
+     * eventCardSamples/1781113988_abcd1234_card-name.jpeg
      */
     private function storeCardImage(Request $request): string
     {
         $image = $request->file('image');
 
         $originalName = pathinfo($image->getClientOriginalName(), PATHINFO_FILENAME);
-        $extension = strtolower($image->getClientOriginalExtension());
+        $extension = strtolower($image->getClientOriginalExtension() ?: $image->extension() ?: 'jpg');
+
+        if ($extension === 'jpeg') {
+            $extension = 'jpg';
+        }
 
         $safeName = Str::slug($originalName) ?: 'event-card';
 
         /*
-         * Use time + random string to avoid browser/cache filename conflicts.
+         * Use timestamp + random string to avoid browser/cache filename conflicts.
          */
-        $fileName = time() . '_' . Str::random(8) . '_' . $safeName . '.' . $extension;
+        $fileName = time() . '_' . Str::random(10) . '_' . $safeName . '.' . $extension;
 
-        return $image->storeAs($this->cardImageFolder, $fileName, 'public');
+        $path = $image->storeAs($this->cardImageFolder, $fileName, 'public');
+        $path = $this->normalizeStoragePath($path);
+
+        if (! $path || ! Storage::disk('public')->exists($path)) {
+            throw new \RuntimeException('Card image was not stored successfully.');
+        }
+
+        /*
+         * Extra safety:
+         * Make sure the saved file is not empty.
+         */
+        if ((int) Storage::disk('public')->size($path) <= 0) {
+            Storage::disk('public')->delete($path);
+
+            throw new \RuntimeException('Card image was saved as an empty file.');
+        }
+
+        return $path;
     }
 
     /**
      * Delete old card image if it exists.
      *
-     * Keep this method for future cleanup/manual use, but the update() method does not
-     * call it immediately because that creates 404/broken previews for cached pages.
+     * Kept for future cleanup/manual use, but update() does not call it immediately
+     * because that can cause broken previews for cached pages.
      */
     private function deleteOldCardImage(?string $path): void
     {
         $path = $this->normalizeStoragePath($path);
 
-        if (! $path) {
+        if (! $path || $this->isTemporaryPath($path)) {
             return;
         }
 
@@ -246,7 +276,7 @@ class EventCardController extends Controller
          */
         $correctedPath = str_replace('eventsCardSamples/', 'eventCardSamples/', $path);
 
-        if (Storage::disk('public')->exists($correctedPath)) {
+        if ($correctedPath !== $path && Storage::disk('public')->exists($correctedPath)) {
             Storage::disk('public')->delete($correctedPath);
         }
     }
@@ -263,10 +293,37 @@ class EventCardController extends Controller
         $path = trim($path);
         $path = str_replace('\\', '/', $path);
         $path = preg_replace('#^/+#', '', $path);
-        $path = preg_replace('#^public/#', '', $path);
-        $path = preg_replace('#^storage/#', '', $path);
+
+        /*
+         * Remove wrong prefixes if older code accidentally saved them.
+         */
+        $path = preg_replace('#^(storage/|public/|app/public/)+#', '', $path);
+
+        /*
+         * Compatibility for old typo folder.
+         */
+        $path = str_replace('eventsCardSamples/', 'eventCardSamples/', $path);
+
+        if ($this->isTemporaryPath($path)) {
+            return null;
+        }
 
         return $path ?: null;
+    }
+
+    /**
+     * Reject temporary paths that may disappear later.
+     */
+    private function isTemporaryPath(?string $path): bool
+    {
+        if (! $path) {
+            return false;
+        }
+
+        return str_contains($path, 'livewire-tmp')
+            || str_contains($path, '/tmp/')
+            || str_starts_with($path, 'tmp/')
+            || str_contains($path, 'temp/');
     }
 
     /**
@@ -277,7 +334,7 @@ class EventCardController extends Controller
         try {
             $publicStorage = public_path('storage');
 
-            if (is_link($publicStorage) || file_exists($publicStorage)) {
+            if (is_link($publicStorage) || File::exists($publicStorage)) {
                 return;
             }
 
@@ -285,7 +342,10 @@ class EventCardController extends Controller
                 @symlink(storage_path('app/public'), $publicStorage);
             }
         } catch (\Throwable $e) {
-            // Do not block saving card settings if symlink creation is not allowed.
+            /*
+             * Do not block saving card settings if symlink creation is not allowed.
+             * Production servers can run: php artisan storage:link
+             */
         }
     }
 
