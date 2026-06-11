@@ -34,7 +34,8 @@ return [
     'elive_sms' => [
         'base_url' => env('ELIVE_SMS_BASE_URL', 'https://message.elive.co.tz/api/v1/vendor'),
         'api_key' => env('ELIVE_SMS_API_KEY'),
-        'secret_key' => env('ELIVE_SMS_SECRET_KEY'),
+        'api_secret' => env('ELIVE_SMS_API_SECRET', env('ELIVE_SMS_SECRET_KEY')),
+        'secret_key' => env('ELIVE_SMS_SECRET_KEY', env('ELIVE_SMS_API_SECRET')),
         'sender_id' => env('ELIVE_SMS_SENDER_ID', 'eLive Card'),
     ],
 
@@ -42,10 +43,6 @@ return [
     |--------------------------------------------------------------------------
     | WhatsApp Cloud API
     |--------------------------------------------------------------------------
-    |
-    | Supports both WHATSAPP_GRAPH_VERSION and WHATSAPP_API_VERSION.
-    | Your production currently has WHATSAPP_GRAPH_VERSION=v23.0.
-    |
     */
 
     'whatsapp' => [

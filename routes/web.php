@@ -22,14 +22,69 @@ use App\Http\Controllers\VenecardstaffController;
 use App\Http\Controllers\WhatsappWebhookController;
 use App\Models\Event;
 use App\Models\EventGuest;
+use App\Models\GuestPdf;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 
 Route::get('/', function () {
     return view('auth.login');
 });
+
+/*
+|--------------------------------------------------------------------------
+| Public invitee private invitation link
+|--------------------------------------------------------------------------
+| QR opens this URL:
+| /i/{invitation_code}
+|
+| Example:
+| http://127.0.0.1:8010/i/200397
+*/
+Route::get('/i/{code}', function (string $code) {
+    $code = trim($code);
+
+    $guest = EventGuest::with(['event', 'qrcode'])
+        ->where('invitation_code', $code)
+        ->firstOrFail();
+
+    $event = $guest->event;
+
+    $guestPdf = GuestPdf::where('event_guests_id', $guest->id)
+        ->latest()
+        ->first();
+
+    $cardUrl = null;
+
+    if ($guestPdf && $guestPdf->pdf_name) {
+        $cardPath = trim(str_replace('\\', '/', (string) $guestPdf->pdf_name));
+        $cardPath = ltrim($cardPath, '/');
+
+        if (str_starts_with($cardPath, 'storage/')) {
+            $cardPath = substr($cardPath, strlen('storage/'));
+        }
+
+        if (str_starts_with($cardPath, 'public/')) {
+            $cardPath = substr($cardPath, strlen('public/'));
+        }
+
+        if (
+            Storage::disk('public')->exists($cardPath) &&
+            Storage::disk('public')->size($cardPath) > 0
+        ) {
+            $cardUrl = asset('storage/' . $cardPath);
+        }
+    }
+
+    return view('invitees.private-invitation', [
+        'guest' => $guest,
+        'event' => $event,
+        'guestPdf' => $guestPdf,
+        'cardUrl' => $cardUrl,
+    ]);
+})->name('invitees.private');
 
 /*
 |--------------------------------------------------------------------------
@@ -114,20 +169,10 @@ Route::get('/dashboard', function () {
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware('auth')->group(function () {
-    /*
-    |--------------------------------------------------------------------------
-    | Profile routes
-    |--------------------------------------------------------------------------
-    */
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
-    /*
-    |--------------------------------------------------------------------------
-    | Event categories routes
-    |--------------------------------------------------------------------------
-    */
     Route::get('eventcategories/trashed', [EventcategoriesController::class, 'trashed'])
         ->name('eventcategories.trashed');
 
@@ -139,62 +184,27 @@ Route::middleware('auth')->group(function () {
 
     Route::resource('eventcategories', EventcategoriesController::class);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Staff routes
-    |--------------------------------------------------------------------------
-    */
     Route::resource('venecardstaff', VenecardstaffController::class);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Events routes
-    |--------------------------------------------------------------------------
-    */
     Route::resource('events', EventsController::class);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Card and SMS card routes
-    |--------------------------------------------------------------------------
-    */
     Route::resource('card', EventCardController::class);
     Route::resource('smscard', EventSMSCardController::class);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Card generation and sample card download routes
-    |--------------------------------------------------------------------------
-    */
     Route::get('create-card', [App\Http\Controllers\CreateCardController::class, 'index'])
         ->name('create-card');
 
     Route::get('download-sample-card/{id}', [App\Http\Controllers\CreateCardController::class, 'downloadSampleCard'])
         ->name('samplecard.download');
 
-    /*
-    |--------------------------------------------------------------------------
-    | Excel sample download routes
-    |--------------------------------------------------------------------------
-    */
     Route::get('/download-Excel', [ExelSampleDownloadController::class, 'downloadExcelSample'])
         ->name('downloadexcelsample');
 
     Route::get('/bulk-sms-download-Excel', [ExelSampleDownloadController::class, 'bulksmsdownloadExcelSample'])
         ->name('bulksms.downloadexcelsample');
 
-    /*
-    |--------------------------------------------------------------------------
-    | Guest routes
-    |--------------------------------------------------------------------------
-    */
     Route::resource('guests', EventGuestsController::class);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Add single guest routes
-    |--------------------------------------------------------------------------
-    */
     Route::get('add-guest/{eventId}', function ($eventId) {
         return redirect()
             ->route('guests.index')
@@ -204,22 +214,12 @@ Route::middleware('auth')->group(function () {
     Route::post('add-guest/{eventId}', [EventGuestsController::class, 'addSingleGuest'])
         ->name('guests.addsingleguest');
 
-    /*
-    |--------------------------------------------------------------------------
-    | QR code and PDF card creation routes
-    |--------------------------------------------------------------------------
-    */
     Route::get('/createqrcode/{event_id}', [EventGuestsController::class, 'createqrcode'])
         ->name('guests.createqrcode');
 
     Route::get('/createpdfcard/{event_id}', [EventGuestsController::class, 'createpdfcard'])
         ->name('guests.createpdfcard');
 
-    /*
-    |--------------------------------------------------------------------------
-    | Sending routes
-    |--------------------------------------------------------------------------
-    */
     Route::post('sendcard/{eventId}', [SendCardController::class, 'sendWhatsappCard'])
         ->name('sendcard.sendwhatsappcard');
 
@@ -232,11 +232,6 @@ Route::middleware('auth')->group(function () {
     Route::post('send-thank-you-sms/{eventId}', [SendCardController::class, 'sendthankyousms'])
         ->name('sendcard.sendthankyousms');
 
-    /*
-    |--------------------------------------------------------------------------
-    | General message routes
-    |--------------------------------------------------------------------------
-    */
     Route::get('sendmessage', [SendMessageController::class, 'index'])
         ->name('sendmessage.index');
 
@@ -246,40 +241,20 @@ Route::middleware('auth')->group(function () {
     Route::post('send-batch-message', [SendMessageController::class, 'sendbatchMessage'])
         ->name('sendmessage.sendbatchmessage');
 
-    /*
-    |--------------------------------------------------------------------------
-    | SMS balance test route
-    |--------------------------------------------------------------------------
-    */
     Route::get('sms-balance-test', function () {
         return response()->json(getEliveSmsBalance());
     })->name('sms.balance.test');
 
-    /*
-    |--------------------------------------------------------------------------
-    | Resend card routes
-    |--------------------------------------------------------------------------
-    */
     Route::get('resend-whatsapp-card/{guestId}', [ResendcardController::class, 'resendwhatsappcard'])
         ->name('resendcard.resendwhatsappcard');
 
     Route::get('resend-sms-card/{guestId}', [ResendcardController::class, 'resendSMScard'])
         ->name('resendcard.resendsmscard');
 
-    /*
-    |--------------------------------------------------------------------------
-    | SMS setup routes
-    |--------------------------------------------------------------------------
-    */
     Route::resource('smsreminder', EventSMSReminderController::class);
     Route::resource('smswelcoming', EventSMSWelcomingController::class);
     Route::resource('smsthankyou', EventSMSThankyouController::class);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Contribution caption routes
-    |--------------------------------------------------------------------------
-    */
     Route::resource('contribution-caption', ContributionCardCaptionController::class);
 });
 

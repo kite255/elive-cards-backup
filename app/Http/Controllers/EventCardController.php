@@ -13,9 +13,12 @@ use RealRashid\SweetAlert\Facades\Alert;
 class EventCardController extends Controller
 {
     /**
-     * Permanent storage folder for event card template/sample images.
+     * Permanent base storage folder for event-based card template images.
+     *
+     * Final saved example:
+     * event-card-samples/event-57/card_xxxxx.jpg
      */
-    private string $cardImageFolder = 'eventCardSamples';
+    private string $cardImageBaseFolder = 'event-card-samples';
 
     public function index()
     {
@@ -39,7 +42,7 @@ class EventCardController extends Controller
 
                     /*
                      * This is the original card/template image.
-                     * It is stored permanently in storage/app/public/eventCardSamples.
+                     * It is stored permanently in storage/app/public/event-card-samples/event-{event_id}.
                      */
                     'image' => 'required|image|mimes:jpg,jpeg,png,webp|max:5120',
 
@@ -80,14 +83,24 @@ class EventCardController extends Controller
                 ->withInput();
         }
 
-        $eventCard = new EventCard();
-        $eventCard->user_id = Auth::id();
-        $eventCard->event_id = $validated['event_id'];
+        /*
+         * Permanent multi-event rule:
+         * One event should use its own card template record.
+         * This prevents Event A from accidentally loading Event B's latest image.
+         */
+        $eventCard = EventCard::firstOrNew([
+            'event_id' => $validated['event_id'],
+        ]);
+
+        if (! $eventCard->exists) {
+            $eventCard->user_id = Auth::id();
+            $eventCard->event_id = $validated['event_id'];
+        }
 
         if ($request->hasFile('image')) {
             $this->syncPublicStorageLink();
 
-            $path = $this->storeCardImage($request);
+            $path = $this->storeCardImage($request, (int) $validated['event_id']);
 
             /*
              * Permanent image compatibility:
@@ -103,7 +116,7 @@ class EventCardController extends Controller
 
         $eventCard->save();
 
-        Alert::success('Card Imported', 'Event card imported successfully.');
+        Alert::success('Card Saved', 'Event card template saved permanently for this event.');
 
         return $this->successResponse($request, $eventCard);
     }
@@ -168,7 +181,7 @@ class EventCardController extends Controller
         if ($request->hasFile('image')) {
             $this->syncPublicStorageLink();
 
-            $path = $this->storeCardImage($request);
+            $path = $this->storeCardImage($request, (int) $eventCard->event_id);
 
             /*
              * Do NOT delete the old image immediately.
@@ -197,7 +210,7 @@ class EventCardController extends Controller
 
         $eventCard->save();
 
-        Alert::success('Card Updated', 'Event card updated successfully.');
+        Alert::success('Card Updated', 'Event card settings updated successfully.');
 
         return $this->successResponse($request, $eventCard);
     }
@@ -211,9 +224,9 @@ class EventCardController extends Controller
      * Store uploaded card image permanently in the public disk.
      *
      * Returned path example:
-     * eventCardSamples/1781113988_abcd1234_card-name.jpeg
+     * event-card-samples/event-57/1781113988_abcd1234_card-name.jpg
      */
-    private function storeCardImage(Request $request): string
+    private function storeCardImage(Request $request, int $eventId): string
     {
         $image = $request->file('image');
 
@@ -227,11 +240,18 @@ class EventCardController extends Controller
         $safeName = Str::slug($originalName) ?: 'event-card';
 
         /*
+         * Store each event's template image in its own folder.
+         * This makes the system safe for many events:
+         * Event 57 cannot overwrite or confuse Event 58.
+         */
+        $eventFolder = $this->eventCardImageFolder($eventId);
+
+        /*
          * Use timestamp + random string to avoid browser/cache filename conflicts.
          */
         $fileName = time() . '_' . Str::random(10) . '_' . $safeName . '.' . $extension;
 
-        $path = $image->storeAs($this->cardImageFolder, $fileName, 'public');
+        $path = $image->storeAs($eventFolder, $fileName, 'public');
         $path = $this->normalizeStoragePath($path);
 
         if (! $path || ! Storage::disk('public')->exists($path)) {
@@ -271,13 +291,13 @@ class EventCardController extends Controller
         }
 
         /*
-         * Compatibility for old wrong folder name:
-         * eventsCardSamples → eventCardSamples
+         * Compatibility for old wrong folder names.
          */
-        $correctedPath = str_replace('eventsCardSamples/', 'eventCardSamples/', $path);
-
-        if ($correctedPath !== $path && Storage::disk('public')->exists($correctedPath)) {
-            Storage::disk('public')->delete($correctedPath);
+        foreach ($this->legacyPathAlternatives($path) as $legacyPath) {
+            if (Storage::disk('public')->exists($legacyPath)) {
+                Storage::disk('public')->delete($legacyPath);
+                return;
+            }
         }
     }
 
@@ -301,6 +321,8 @@ class EventCardController extends Controller
 
         /*
          * Compatibility for old typo folder.
+         * Do not force old eventCardSamples into the new event-based folder here,
+         * because old records may still physically exist in the old location.
          */
         $path = str_replace('eventsCardSamples/', 'eventCardSamples/', $path);
 
@@ -309,6 +331,26 @@ class EventCardController extends Controller
         }
 
         return $path ?: null;
+    }
+
+
+    /**
+     * Event-specific permanent folder for card template images.
+     */
+    private function eventCardImageFolder(int $eventId): string
+    {
+        return $this->cardImageBaseFolder . '/event-' . $eventId;
+    }
+
+    /**
+     * Possible legacy path alternatives used by older versions.
+     */
+    private function legacyPathAlternatives(string $path): array
+    {
+        return array_values(array_unique([
+            str_replace('eventsCardSamples/', 'eventCardSamples/', $path),
+            str_replace('eventCardSamples/', 'eventsCardSamples/', $path),
+        ]));
     }
 
     /**
@@ -399,7 +441,7 @@ class EventCardController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Card settings saved successfully.',
+                'message' => 'Card settings saved successfully for this event.',
                 'image_path' => $imagePath,
                 'image_url' => $imagePath
                     ? asset('storage/' . $imagePath) . '?v=' . optional($eventCard->updated_at)->timestamp

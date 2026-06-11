@@ -3,9 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\BulkSMS;
+use App\Services\EliveSmsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
 use RealRashid\SweetAlert\Facades\Alert;
@@ -21,7 +21,7 @@ class SendMessageController extends Controller
         return view('venecardDashboard.message.sms.index', compact('messages'));
     }
 
-    public function sendsinglemessage(Request $request)
+    public function sendsinglemessage(Request $request, EliveSmsService $smsService)
     {
         $validated = $request->validate([
             'message' => 'required|string',
@@ -33,21 +33,31 @@ class SendMessageController extends Controller
 
         $phone = $this->formatTanzaniaPhone($validated['phone']);
         $message = $validated['message'];
-        $senderId = $validated['sender_id'] ?? config('services.elive_sms.sender_id', 'elive card');
+        $senderId = $validated['sender_id'] ?? config('services.elive_sms.sender_id', 'eLive Card');
 
         if (! $phone) {
             Alert::error('Invalid Phone', 'Please enter a valid phone number.');
             return redirect()->back()->withInput();
         }
 
-        $smsResult = $this->sendSmsToApi($phone, $message, $senderId);
+        $smsResult = $this->sendSmsToApi($smsService, $phone, $message, $senderId);
 
         $singlemessage = new BulkSMS();
         $singlemessage->user_id = Auth::id();
         $singlemessage->phone = $phone;
         $singlemessage->message = $message;
         $singlemessage->sender_id = $senderId;
-        $singlemessage->request_id = $smsResult['message_id'] ?? 'unknown';
+
+        /*
+        |--------------------------------------------------------------------------
+        | Important
+        |--------------------------------------------------------------------------
+        | Save provider shootId in request_id.
+        | Delivery report uses:
+        | GET /message/deliver/{shootId}
+        */
+        $singlemessage->request_id = $smsResult['shoot_id'] ?? $smsResult['message_id'] ?? 'unknown';
+
         $singlemessage->sent_status = $smsResult['success'] ? 'sent' : 'failed';
         $singlemessage->batch_id = $batch_id;
         $singlemessage->save();
@@ -61,7 +71,7 @@ class SendMessageController extends Controller
         return redirect()->back();
     }
 
-    public function sendbatchmessage(Request $request)
+    public function sendbatchmessage(Request $request, EliveSmsService $smsService)
     {
         $validated = $request->validate([
             'excel_file' => 'required|mimes:xlsx,csv,xls',
@@ -70,7 +80,7 @@ class SendMessageController extends Controller
         ]);
 
         $batch_id = $this->generateBatchId();
-        $senderId = $validated['sender_id'] ?? config('services.elive_sms.sender_id', 'elive card');
+        $senderId = $validated['sender_id'] ?? config('services.elive_sms.sender_id', 'eLive Card');
 
         try {
             $fileExtension = $request->file('excel_file')->getClientOriginalExtension();
@@ -98,14 +108,14 @@ class SendMessageController extends Controller
 
                 $message = $this->replaceMessagePlaceholders($validated['message'], $row);
 
-                $smsResult = $this->sendSmsToApi($phone, $message, $senderId);
+                $smsResult = $this->sendSmsToApi($smsService, $phone, $message, $senderId);
 
                 $singlemessage = new BulkSMS();
                 $singlemessage->user_id = Auth::id();
                 $singlemessage->phone = $phone;
                 $singlemessage->message = $message;
                 $singlemessage->sender_id = $senderId;
-                $singlemessage->request_id = $smsResult['message_id'] ?? 'unknown';
+                $singlemessage->request_id = $smsResult['shoot_id'] ?? $smsResult['message_id'] ?? 'unknown';
                 $singlemessage->sent_status = $smsResult['success'] ? 'sent' : 'failed';
                 $singlemessage->batch_id = $batch_id;
                 $singlemessage->save();
@@ -123,7 +133,7 @@ class SendMessageController extends Controller
             );
 
             return redirect()->back();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Batch SMS Error', [
                 'message' => $e->getMessage(),
                 'file' => $e->getFile(),
@@ -135,73 +145,108 @@ class SendMessageController extends Controller
         }
     }
 
-    private function sendSmsToApi(string $phone, string $message, string $senderId): array
+    /**
+     * Manual delivery report refresh.
+     *
+     * This checks sent SMS records that have request_id/shootId and updates sent_status.
+     * It works without adding new database columns.
+     */
+    public function refreshDeliveryReports(Request $request, EliveSmsService $smsService)
     {
-        $url = config('services.elive_sms.url');
-        $apiKey = config('services.elive_sms.api_key');
-        $apiSecret = config('services.elive_sms.api_secret');
+        $query = BulkSMS::where('user_id', Auth::id())
+            ->whereNotNull('request_id')
+            ->where('request_id', '!=', 'unknown');
 
-        if (! $url || ! $apiKey || ! $apiSecret) {
-            Log::error('SMS API credentials missing', [
-                'url_exists' => ! empty($url),
-                'api_key_exists' => ! empty($apiKey),
-                'api_secret_exists' => ! empty($apiSecret),
-            ]);
-
-            return [
-                'success' => false,
-                'message' => 'SMS API credentials are missing.',
-                'message_id' => null,
-            ];
+        if ($request->filled('batch_id')) {
+            $query->where('batch_id', $request->batch_id);
         }
 
-        $payload = [
-            'senderId' => $senderId,
-            'messageType' => 'text',
-            'message' => $message,
-            'contacts' => $phone,
-            'deliveryReportUrl' => config('services.elive_sms.delivery_report_url', url('/sms/delivery-callback')),
-        ];
+        if ($request->filled('id')) {
+            $query->where('id', $request->id);
+        }
 
+        $messages = $query->latest()->limit(100)->get();
+
+        $updated = 0;
+        $failed = 0;
+
+        foreach ($messages as $message) {
+            try {
+                $result = $smsService->firstDeliveryStatus($message->request_id);
+
+                $deliveryStatus = strtolower((string) ($result['delivery_status'] ?? ''));
+
+                if ($deliveryStatus === '') {
+                    continue;
+                }
+
+                $message->sent_status = match (true) {
+                    str_contains($deliveryStatus, 'deliver') => 'delivered',
+                    str_contains($deliveryStatus, 'fail') => 'failed',
+                    str_contains($deliveryStatus, 'reject') => 'failed',
+                    str_contains($deliveryStatus, 'undeliver') => 'failed',
+                    str_contains($deliveryStatus, 'pending') => 'pending',
+                    default => $deliveryStatus,
+                };
+
+                $message->save();
+
+                $updated++;
+            } catch (\Throwable $e) {
+                $failed++;
+
+                Log::error('SMS delivery report refresh failed.', [
+                    'bulk_sms_id' => $message->id,
+                    'request_id' => $message->request_id,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        Alert::success(
+            'Delivery Report Updated',
+            'Updated: ' . $updated . ', Failed: ' . $failed
+        );
+
+        return redirect()->back();
+    }
+
+    private function sendSmsToApi(
+        EliveSmsService $smsService,
+        string $phone,
+        string $message,
+        string $senderId
+    ): array {
         try {
             Log::info('SMS sending started', [
                 'phone' => $phone,
-                'senderId' => $senderId,
-                'payload' => $payload,
+                'sender_id' => $senderId,
             ]);
 
-            $response = Http::withHeaders([
-                'Content-Type' => 'application/json',
-                'api_key' => $apiKey,
-                'api_secret' => $apiSecret,
-            ])
-                ->timeout(30)
-                ->post($url, $payload);
+            $response = $smsService->send($phone, $message, $senderId);
 
-            $responseBody = $response->json();
+            $body = $response['body'] ?? [];
 
-            Log::info('SMS API response', [
-                'status' => $response->status(),
-                'body' => $responseBody,
-                'raw_body' => $response->body(),
+            $success = (bool) ($response['successful'] ?? false);
+            $shootId = $response['shoot_id'] ?? null;
+
+            Log::info('SMS API normalized response', [
+                'phone' => $phone,
+                'success' => $success,
+                'shoot_id' => $shootId,
+                'body' => $body,
             ]);
-
-            $messageId = $responseBody['data']['shootId'] ?? null;
-
-            if (! $response->successful()) {
-                return [
-                    'success' => false,
-                    'message' => $responseBody['message'] ?? $response->body() ?? 'SMS API request failed.',
-                    'message_id' => $messageId,
-                ];
-            }
 
             return [
-                'success' => true,
-                'message' => $responseBody['message'] ?? 'SMS sent successfully.',
-                'message_id' => $messageId,
+                'success' => $success,
+                'message' => is_array($body)
+                    ? ($body['message'] ?? 'SMS request completed.')
+                    : 'SMS request completed.',
+                'message_id' => $shootId,
+                'shoot_id' => $shootId,
+                'body' => $body,
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('SMS API exception', [
                 'phone' => $phone,
                 'message' => $e->getMessage(),
@@ -211,6 +256,8 @@ class SendMessageController extends Controller
                 'success' => false,
                 'message' => $e->getMessage(),
                 'message_id' => null,
+                'shoot_id' => null,
+                'body' => null,
             ];
         }
     }
@@ -262,15 +309,11 @@ class SendMessageController extends Controller
 
     private function getReaderType($extension)
     {
-        switch (strtolower($extension)) {
-            case 'xlsx':
-                return \Maatwebsite\Excel\Excel::XLSX;
-            case 'xls':
-                return \Maatwebsite\Excel\Excel::XLS;
-            case 'csv':
-                return \Maatwebsite\Excel\Excel::CSV;
-            default:
-                return \Maatwebsite\Excel\Excel::XLSX;
-        }
+        return match (strtolower((string) $extension)) {
+            'xlsx' => \Maatwebsite\Excel\Excel::XLSX,
+            'xls' => \Maatwebsite\Excel\Excel::XLS,
+            'csv' => \Maatwebsite\Excel\Excel::CSV,
+            default => \Maatwebsite\Excel\Excel::XLSX,
+        };
     }
 }
