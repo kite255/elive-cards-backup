@@ -6,6 +6,7 @@ use App\Models\SendWhatsappCard;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class WhatsappWebhookController extends Controller
 {
@@ -13,7 +14,7 @@ class WhatsappWebhookController extends Controller
      * WhatsApp webhook handler.
      *
      * GET  = Meta webhook verification.
-     * POST = Receive WhatsApp delivery status updates and replies.
+     * POST = Receive WhatsApp delivery status updates and invitee replies.
      */
     public function handleWebhook(Request $request)
     {
@@ -39,7 +40,7 @@ class WhatsappWebhookController extends Controller
         $token = $request->query('hub_verify_token') ?? $request->query('hub.verify_token');
         $challenge = $request->query('hub_challenge') ?? $request->query('hub.challenge');
 
-        if ($mode === 'subscribe' && $token === $verifyToken) {
+        if ($mode === 'subscribe' && hash_equals((string) $verifyToken, (string) $token)) {
             Log::info('WhatsApp webhook verified successfully.');
             return response($challenge, 200);
         }
@@ -65,12 +66,13 @@ class WhatsappWebhookController extends Controller
 
         $entries = $data['entry'] ?? [];
 
-        if (empty($entries)) {
+        if (empty($entries) || ! is_array($entries)) {
             Log::warning('WhatsApp webhook received without entry.', [
                 'payload' => $data,
             ]);
 
-            return response('Invalid Request', 400);
+            // Meta expects 200 for received webhooks. Returning 400 can cause repeated retries.
+            return response('Webhook received without entry', 200);
         }
 
         foreach ($entries as $entry) {
@@ -79,15 +81,11 @@ class WhatsappWebhookController extends Controller
             foreach ($changes as $change) {
                 $value = $change['value'] ?? [];
 
-                $statuses = $value['statuses'] ?? [];
-
-                foreach ($statuses as $statusData) {
+                foreach (($value['statuses'] ?? []) as $statusData) {
                     $this->handleStatusUpdate($statusData);
                 }
 
-                $messages = $value['messages'] ?? [];
-
-                foreach ($messages as $messageData) {
+                foreach (($value['messages'] ?? []) as $messageData) {
                     $this->handleIncomingMessage($messageData);
                 }
             }
@@ -102,21 +100,18 @@ class WhatsappWebhookController extends Controller
     private function handleStatusUpdate(array $statusData): void
     {
         $messageId = $statusData['id'] ?? null;
-        $status = $statusData['status'] ?? null;
-        $recipientId = $statusData['recipient_id'] ?? null;
-
-        $timestamp = isset($statusData['timestamp'])
-            ? date('Y-m-d H:i:s', (int) $statusData['timestamp'])
-            : now()->format('Y-m-d H:i:s');
-
-        $errorMessage = $this->extractErrorMessage($statusData);
+        $status = strtolower((string) ($statusData['status'] ?? 'pending'));
+        $recipientId = $this->normalizePhone($statusData['recipient_id'] ?? null);
+        $timestamp = $this->formatWhatsappTimestamp($statusData['timestamp'] ?? null);
+        $error = $this->extractErrorDetails($statusData);
 
         Log::info('WhatsApp message status update.', [
             'message_id' => $messageId,
             'status' => $status,
             'recipient_id' => $recipientId,
             'timestamp' => $timestamp,
-            'error' => $errorMessage,
+            'error_code' => $error['code'],
+            'error_message' => $error['message'],
         ]);
 
         if (! $messageId) {
@@ -129,21 +124,15 @@ class WhatsappWebhookController extends Controller
 
         try {
             if (! Schema::hasTable('send_whatsapp_cards')) {
+                Log::warning('send_whatsapp_cards table not found while processing WhatsApp webhook.');
                 return;
             }
 
-            /*
-             * IMPORTANT:
-             * WhatsApp webhook "id" is the WhatsApp message ID.
-             * In your table, it is stored in send_whatsapp_cards.message_id.
-             */
-            $record = SendWhatsappCard::where('message_id', $messageId)->first();
+            $record = $this->findWhatsappRecordByMessageId($messageId);
 
-            /*
-             * Fallback: if older records accidentally stored message ID in another column.
-             */
-            if (! $record && Schema::hasColumn('send_whatsapp_cards', 'whatsapp_message_id')) {
-                $record = SendWhatsappCard::where('whatsapp_message_id', $messageId)->first();
+            if (! $record && $recipientId) {
+                // Last fallback for older records where message_id was not saved correctly.
+                $record = $this->findLatestWhatsappRecordByPhone($recipientId);
             }
 
             if (! $record) {
@@ -156,31 +145,26 @@ class WhatsappWebhookController extends Controller
                 return;
             }
 
-            if (Schema::hasColumn('send_whatsapp_cards', 'delivery_status')) {
-                $record->delivery_status = $status;
-            }
+            $this->setColumn($record, 'message_id', $messageId);
+            $this->setColumn($record, 'whatsapp_message_id', $messageId);
+            $this->setColumn($record, 'delivery_status', $status ?: 'pending');
+            $this->setColumn($record, 'status', $status ?: 'pending');
+            $this->setColumn($record, 'delivery_status_time', $timestamp);
+            $this->setColumn($record, 'status_updated_at', $timestamp);
 
-            if (Schema::hasColumn('send_whatsapp_cards', 'delivery_status_time')) {
-                $record->delivery_status_time = $timestamp;
-            }
+            if ($status === 'failed') {
+                $this->setColumn($record, 'sent_status', 'failed');
+                $this->setColumn($record, 'error_code', $error['code']);
+                $this->setColumn($record, 'error_message', $error['message']);
+                $this->setColumn($record, 'failure_reason', $error['message']);
 
-            /*
-             * Keep sent_status as accepted after API accepted it.
-             * But if webhook says failed, mark it failed.
-             */
-            if ($status === 'failed' && Schema::hasColumn('send_whatsapp_cards', 'sent_status')) {
-                $record->sent_status = 'failed';
-            }
-
-            /*
-             * Store failed reason in available column.
-             * Your table has reply_message, so we use it if error_message does not exist.
-             */
-            if ($errorMessage) {
-                if (Schema::hasColumn('send_whatsapp_cards', 'error_message')) {
-                    $record->error_message = $errorMessage;
-                } elseif (Schema::hasColumn('send_whatsapp_cards', 'reply_message')) {
-                    $record->reply_message = $errorMessage;
+                // Only use reply_message for error if your current table has no dedicated error column.
+                if (! Schema::hasColumn('send_whatsapp_cards', 'error_message')) {
+                    $this->setColumn($record, 'reply_message', $error['message']);
+                }
+            } else {
+                if (in_array($status, ['sent', 'delivered', 'read'], true)) {
+                    $this->setColumn($record, 'sent_status', 'success');
                 }
             }
 
@@ -190,7 +174,8 @@ class WhatsappWebhookController extends Controller
                 'send_whatsapp_card_id' => $record->id,
                 'message_id' => $messageId,
                 'status' => $status,
-                'error' => $errorMessage,
+                'error_code' => $error['code'],
+                'error_message' => $error['message'],
             ]);
         } catch (\Throwable $e) {
             Log::error('Failed to update WhatsApp status from webhook.', [
@@ -202,18 +187,14 @@ class WhatsappWebhookController extends Controller
     }
 
     /**
-     * Log and save incoming WhatsApp replies.
+     * Log and save incoming WhatsApp replies from invitees.
      */
     private function handleIncomingMessage(array $messageData): void
     {
-        $from = $messageData['from'] ?? null;
+        $from = $this->normalizePhone($messageData['from'] ?? null);
         $messageId = $messageData['id'] ?? null;
-
-        $timestamp = isset($messageData['timestamp'])
-            ? date('Y-m-d H:i:s', (int) $messageData['timestamp'])
-            : now()->format('Y-m-d H:i:s');
-
-        $text = $messageData['text']['body'] ?? null;
+        $timestamp = $this->formatWhatsappTimestamp($messageData['timestamp'] ?? null);
+        $text = $this->extractIncomingMessageText($messageData);
 
         Log::info('Incoming WhatsApp message.', [
             'from' => $from,
@@ -228,16 +209,11 @@ class WhatsappWebhookController extends Controller
 
         try {
             if (! Schema::hasTable('send_whatsapp_cards')) {
+                Log::warning('send_whatsapp_cards table not found while saving WhatsApp reply.');
                 return;
             }
 
-            /*
-             * Match reply by recipient phone number.
-             * whatsapp_sender_id usually stores the receiver phone number, e.g. 255670461644.
-             */
-            $record = SendWhatsappCard::where('whatsapp_sender_id', $from)
-                ->latest()
-                ->first();
+            $record = $this->findLatestWhatsappRecordByPhone($from);
 
             if (! $record) {
                 Log::warning('No SendWhatsappCard record found for incoming reply phone.', [
@@ -249,12 +225,16 @@ class WhatsappWebhookController extends Controller
                 return;
             }
 
-            if (Schema::hasColumn('send_whatsapp_cards', 'reply_message')) {
-                $record->reply_message = $text;
-            }
+            // reply_message should contain only invitee reply, not delivery failure error.
+            $this->setColumn($record, 'reply_message', $text);
+            $this->setColumn($record, 'reply_status', 'received');
+            $this->setColumn($record, 'reply_message_id', $messageId);
+            $this->setColumn($record, 'reply_received_at', $timestamp);
+            $this->setColumn($record, 'delivery_status_time', $timestamp);
 
-            if (Schema::hasColumn('send_whatsapp_cards', 'delivery_status_time')) {
-                $record->delivery_status_time = $timestamp;
+            $rsvpStatus = $this->detectRsvpStatus($text);
+            if ($rsvpStatus) {
+                $this->setColumn($record, 'rsvp_status', $rsvpStatus);
             }
 
             $record->save();
@@ -263,6 +243,7 @@ class WhatsappWebhookController extends Controller
                 'send_whatsapp_card_id' => $record->id,
                 'from' => $from,
                 'reply' => $text,
+                'rsvp_status' => $rsvpStatus,
             ]);
         } catch (\Throwable $e) {
             Log::error('Failed to save incoming WhatsApp reply.', [
@@ -274,20 +255,188 @@ class WhatsappWebhookController extends Controller
     }
 
     /**
-     * Extract readable WhatsApp error message.
+     * Find record using WhatsApp message ID.
      */
-    private function extractErrorMessage(array $statusData): ?string
+    private function findWhatsappRecordByMessageId(string $messageId): ?SendWhatsappCard
+    {
+        $query = SendWhatsappCard::query();
+
+        if (Schema::hasColumn('send_whatsapp_cards', 'message_id')) {
+            $record = (clone $query)->where('message_id', $messageId)->first();
+            if ($record) {
+                return $record;
+            }
+        }
+
+        if (Schema::hasColumn('send_whatsapp_cards', 'whatsapp_message_id')) {
+            $record = (clone $query)->where('whatsapp_message_id', $messageId)->first();
+            if ($record) {
+                return $record;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Match latest sent WhatsApp invitation by invitee phone number.
+     */
+    private function findLatestWhatsappRecordByPhone(string $phone): ?SendWhatsappCard
+    {
+        $normalized = $this->normalizePhone($phone);
+
+        if (! $normalized) {
+            return null;
+        }
+
+        $phoneVariants = array_values(array_unique([
+            $normalized,
+            '+' . $normalized,
+            '0' . substr($normalized, -9),
+        ]));
+
+        $query = SendWhatsappCard::query();
+
+        $query->where(function ($q) use ($phoneVariants) {
+            foreach (['whatsapp_sender_id', 'phone', 'mobile_number', 'recipient_id', 'to'] as $column) {
+                if (Schema::hasColumn('send_whatsapp_cards', $column)) {
+                    $q->orWhereIn($column, $phoneVariants);
+                }
+            }
+        });
+
+        return $query->latest()->first();
+    }
+
+    /**
+     * Extract readable WhatsApp error details.
+     */
+    private function extractErrorDetails(array $statusData): array
     {
         if (empty($statusData['errors'][0])) {
-            return null;
+            return [
+                'code' => null,
+                'message' => null,
+            ];
         }
 
         $error = $statusData['errors'][0];
 
-        return trim(
-            ($error['code'] ?? '') . ' ' .
-            ($error['title'] ?? '') . ' ' .
-            ($error['message'] ?? '')
-        ) ?: null;
+        $code = isset($error['code']) ? (string) $error['code'] : null;
+
+        $message = trim(implode(' ', array_filter([
+            $error['title'] ?? null,
+            $error['message'] ?? null,
+            $error['error_data']['details'] ?? null,
+        ])));
+
+        if ($code && $message) {
+            $message = trim($code . ' ' . $message);
+        } elseif ($code) {
+            $message = $code;
+        }
+
+        return [
+            'code' => $code,
+            'message' => $message ?: null,
+        ];
+    }
+
+    /**
+     * Extract incoming text from different WhatsApp message types.
+     */
+    private function extractIncomingMessageText(array $messageData): ?string
+    {
+        $type = $messageData['type'] ?? null;
+
+        if ($type === 'text') {
+            return trim((string) ($messageData['text']['body'] ?? '')) ?: null;
+        }
+
+        if ($type === 'button') {
+            return trim((string) ($messageData['button']['text'] ?? $messageData['button']['payload'] ?? '')) ?: null;
+        }
+
+        if ($type === 'interactive') {
+            $interactive = $messageData['interactive'] ?? [];
+
+            return trim((string) (
+                $interactive['button_reply']['title']
+                ?? $interactive['button_reply']['id']
+                ?? $interactive['list_reply']['title']
+                ?? $interactive['list_reply']['id']
+                ?? ''
+            )) ?: null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Detect RSVP status from common Swahili/English replies.
+     */
+    private function detectRsvpStatus(string $reply): ?string
+    {
+        $reply = Str::lower(trim($reply));
+
+        $attendingWords = [
+            'yes', 'y', 'ok', 'okay', 'sawa', 'nakuja', 'nitakuja', 'nitakuwepo',
+            'tutakuja', 'tutakuwepo', 'attending', 'confirm', 'confirmed', 'ipo',
+        ];
+
+        $notAttendingWords = [
+            'no', 'n', 'hapana', 'sitakuja', 'sitaweza', 'not attending',
+            'siwezi', 'cancel', 'decline', 'declined',
+        ];
+
+        foreach ($attendingWords as $word) {
+            if ($reply === $word || str_contains($reply, $word)) {
+                return 'attending';
+            }
+        }
+
+        foreach ($notAttendingWords as $word) {
+            if ($reply === $word || str_contains($reply, $word)) {
+                return 'not_attending';
+            }
+        }
+
+        return 'reply_received';
+    }
+
+    /**
+     * Safely set column only if it exists in current database.
+     */
+    private function setColumn(SendWhatsappCard $record, string $column, mixed $value): void
+    {
+        if (Schema::hasColumn('send_whatsapp_cards', $column)) {
+            $record->{$column} = $value;
+        }
+    }
+
+    /**
+     * Normalize phone to digits only. Example: +255670461644 => 255670461644.
+     */
+    private function normalizePhone(?string $phone): ?string
+    {
+        if (! $phone) {
+            return null;
+        }
+
+        $phone = preg_replace('/\D+/', '', $phone);
+
+        return $phone ?: null;
+    }
+
+    /**
+     * Convert WhatsApp unix timestamp to database datetime string.
+     */
+    private function formatWhatsappTimestamp(mixed $timestamp): string
+    {
+        if ($timestamp) {
+            return date('Y-m-d H:i:s', (int) $timestamp);
+        }
+
+        return now()->format('Y-m-d H:i:s');
     }
 }
