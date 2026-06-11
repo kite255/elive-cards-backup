@@ -2,139 +2,45 @@
 
 @section('content')
 <style>
-    .notification-container {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        z-index: 1000;
-        width: 80vw;
-        max-width: 500px;
-        opacity: 0;
-        visibility: hidden;
-        transition: all 0.3s ease-in-out;
+    body {
+        background: #f8fafc;
     }
 
-    .notification-container.show {
-        opacity: 1;
-        visibility: visible;
+    .scan-wrapper {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 24px 14px;
     }
 
-    .notification-card {
-        background: white;
-        border-radius: 20px;
-        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+    .scan-card {
+        background: #ffffff;
+        border-radius: 18px;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.10);
         overflow: hidden;
-        transform: scale(0.9);
-        transition: transform 0.3s ease-in-out;
-        border: none;
+        border: 1px solid #e5e7eb;
     }
 
-    .notification-container.show .notification-card {
-        transform: scale(1);
-    }
-
-    .card-header {
-        padding: 2rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 1rem;
-        background: transparent;
-        border-bottom: none;
-    }
-
-    .success-icon,
-    .error-icon {
-        width: 48px;
-        height: 48px;
-        animation: iconPop 0.5s ease-out;
-    }
-
-    @keyframes iconPop {
-        0% { transform: scale(0) rotate(-180deg); }
-        50% { transform: scale(1.2) rotate(0deg); }
-        100% { transform: scale(1) rotate(0deg); }
-    }
-
-    .success-icon path { fill: #198754; }
-    .error-icon path { fill: #dc3545; }
-
-    .card-body {
-        padding: 2rem;
+    .scan-header {
+        background: #233F7E;
+        color: #ffffff;
+        padding: 22px;
         text-align: center;
     }
 
-    .card-text {
-        font-size: 1.1rem;
-        margin: 1rem 0;
-        color: #333;
+    .scan-header h3 {
+        margin: 0;
+        font-weight: 700;
+        font-size: 22px;
     }
 
-    .btn-primary {
-        transition: all 0.3s ease;
-        padding: 0.8rem 2rem;
-        border-radius: 50px;
-        font-weight: 500;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        background: linear-gradient(45deg, #198754, #20c997);
-        border: none;
-        box-shadow: 0 4px 15px rgba(25, 135, 84, 0.2);
+    .scan-header p {
+        margin: 8px 0 0;
+        opacity: 0.9;
+        font-size: 14px;
     }
 
-    .btn-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(25, 135, 84, 0.3);
-    }
-
-    .error-btn {
-        background: linear-gradient(45deg, #dc3545, #ff6b6b);
-        box-shadow: 0 4px 15px rgba(220, 53, 69, 0.2);
-    }
-
-    .error-btn:hover {
-        box-shadow: 0 6px 20px rgba(220, 53, 69, 0.3);
-    }
-
-    .guest-info {
-        text-align: left;
-        padding: 0 1rem;
-    }
-
-    .guest-name {
-        color: #198754;
-        font-weight: 600;
-        font-size: 1.5rem;
-    }
-
-    .scanning-progress {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .badge {
-        padding: 0.5rem 1rem;
-        font-size: 0.9rem;
-        font-weight: 500;
-    }
-
-    .guest-details {
-        background: #f8f9fa;
-        padding: 1rem;
-        border-radius: 10px;
-        margin-top: 1rem;
-        text-align: left;
-    }
-
-    .guest-details p {
-        font-size: 0.95rem;
-    }
-
-    .guest-details i {
-        width: 20px;
-        text-align: center;
+    .scan-body {
+        padding: 20px;
     }
 
     #reader {
@@ -143,9 +49,115 @@
         min-height: 320px;
         margin: 0 auto;
         border: 1px solid #e5e7eb;
-        border-radius: 12px;
+        border-radius: 14px;
         overflow: hidden;
         background: #f8f9fa;
+    }
+
+    .manual-box {
+        margin-top: 22px;
+        padding: 16px;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+    }
+
+    .manual-box label {
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 8px;
+        display: block;
+    }
+
+    .manual-box input {
+        width: 100%;
+        padding: 12px 14px;
+        border: 1px solid #d1d5db;
+        border-radius: 10px;
+        font-size: 16px;
+    }
+
+    .btn-scan {
+        width: 100%;
+        margin-top: 12px;
+        border: none;
+        border-radius: 10px;
+        padding: 12px 14px;
+        font-weight: 700;
+        background: #F99A12;
+        color: #111827;
+        cursor: pointer;
+    }
+
+    .btn-scan:hover {
+        background: #e48600;
+    }
+
+    .result-card {
+        margin-bottom: 18px;
+        border-radius: 16px;
+        padding: 18px;
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    }
+
+    .result-card.success {
+        border-left: 6px solid #16a34a;
+    }
+
+    .result-card.error {
+        border-left: 6px solid #dc2626;
+    }
+
+    .result-title {
+        font-weight: 800;
+        font-size: 20px;
+        margin-bottom: 10px;
+    }
+
+    .success .result-title {
+        color: #16a34a;
+    }
+
+    .error .result-title {
+        color: #dc2626;
+    }
+
+    .guest-details {
+        background: #f8fafc;
+        padding: 14px;
+        border-radius: 12px;
+        margin-top: 12px;
+    }
+
+    .guest-details p {
+        margin: 5px 0;
+        color: #374151;
+        font-size: 14px;
+    }
+
+    .progress-badge {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 7px 12px;
+        border-radius: 999px;
+        background: #dcfce7;
+        color: #166534;
+        font-weight: 700;
+        font-size: 13px;
+    }
+
+    .error .progress-badge {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .small-note {
+        margin-top: 12px;
+        color: #6b7280;
+        font-size: 13px;
+        text-align: center;
     }
 </style>
 
@@ -155,243 +167,173 @@
     $scanAgainUrl = route('scan-cards.index', $sessionEvent->code ?? $event->code ?? $event->id);
 @endphp
 
-<div class="notification-container">
-    <div class="row justify-content-center">
-        <div class="col-12">
+<div class="scan-wrapper">
 
-            @if(session('success-message'))
-                <div class="notification-card">
-                    <div class="card-header">
-                        <svg class="success-icon" viewBox="0 0 24 24">
-                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-                        </svg>
-                    </div>
+    @if(session('success-message'))
+        <div class="result-card success">
+            <div class="result-title">{{ session('success-message') }}</div>
 
-                    <div class="card-body">
-                        <p class="card-text text-success fw-bold">{{ session('success-message') }}</p>
+            @if($sessionGuest)
+                <div class="guest-details">
+                    <p><strong>Name:</strong> {{ $sessionGuest->guest_name ?? '-' }}</p>
+                    <p><strong>Phone:</strong> {{ $sessionGuest->guest_phone ?? '-' }}</p>
+                    <p><strong>Code:</strong> {{ $sessionGuest->invitation_code ?? '-' }}</p>
+                    <p><strong>Card Type:</strong> {{ $sessionGuest->card_type ?? '-' }}</p>
 
-                        @if($sessionGuest)
-                            <div class="guest-info mb-4">
-                                <h4 class="guest-name mb-2">{{ $sessionGuest->guest_name }}</h4>
+                    @if(!empty($sessionGuest->scanned_time))
+                        <p>
+                            <strong>Scanned Time:</strong>
+                            {{ \Carbon\Carbon::parse($sessionGuest->scanned_time)->format('d M Y, h:i A') }}
+                        </p>
+                    @endif
 
-                                @if(session('scanning_progress'))
-                                    <div class="scanning-progress mb-3">
-                                        <span class="badge bg-success">
-                                            {{ session('scanning_progress')['current'] ?? 0 }}
-                                            out of
-                                            {{ session('scanning_progress')['total'] ?? 1 }}
-                                        </span>
-                                    </div>
-                                @endif
-
-                                <div class="guest-details">
-                                    <p class="text-muted mb-1">
-                                        <i class="fas fa-phone me-2"></i>
-                                        {{ $sessionGuest->guest_phone ?? '-' }}
-                                    </p>
-
-                                    <p class="text-muted mb-1">
-                                        <i class="fas fa-ticket-alt me-2"></i>
-                                        {{ $sessionGuest->invitation_code ?? '-' }}
-                                    </p>
-
-                                    <p class="text-muted mb-0">
-                                        <i class="fas fa-id-card me-2"></i>
-                                        {{ $sessionGuest->card_type ?? '-' }}
-                                    </p>
-                                </div>
-                            </div>
-
-                            @if(!empty($sessionGuest->scanned_time))
-                                <p class="mt-2 mb-2">
-                                    Scanned time:
-                                    {{ \Carbon\Carbon::parse($sessionGuest->scanned_time)->format('d M Y, h:i A') }}
-                                </p>
-                            @endif
-                        @endif
-
-                        <a href="{{ $scanAgainUrl }}" class="btn btn-primary btn-block w-100">
-                            Scan Another Card
-                        </a>
-                    </div>
+                    @if(session('scanning_progress'))
+                        <span class="progress-badge">
+                            {{ session('scanning_progress')['current'] ?? 0 }}
+                            out of
+                            {{ session('scanning_progress')['total'] ?? 1 }}
+                        </span>
+                    @endif
                 </div>
             @endif
 
-            @if(session('error-message'))
-                <div class="notification-card">
-                    <div class="card-header">
-                        <svg class="error-icon" viewBox="0 0 24 24">
-                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
-                        </svg>
-                    </div>
-
-                    <div class="card-body">
-                        <p class="card-text text-danger fw-bold">{{ session('error-message') }}</p>
-
-                        @if($sessionGuest)
-                            <div class="guest-details mb-3">
-                                <p class="text-muted mb-1">
-                                    <i class="fas fa-user me-2"></i>
-                                    {{ $sessionGuest->guest_name ?? '-' }}
-                                </p>
-
-                                <p class="text-muted mb-1">
-                                    <i class="fas fa-phone me-2"></i>
-                                    {{ $sessionGuest->guest_phone ?? '-' }}
-                                </p>
-
-                                <p class="text-muted mb-1">
-                                    <i class="fas fa-ticket-alt me-2"></i>
-                                    {{ $sessionGuest->invitation_code ?? '-' }}
-                                </p>
-
-                                <p class="text-muted mb-0">
-                                    <i class="fas fa-id-card me-2"></i>
-                                    {{ $sessionGuest->card_type ?? '-' }}
-                                </p>
-                            </div>
-
-                            @if(!empty($sessionGuest->scanned_time))
-                                <p class="mt-2 mb-2">
-                                    Last scanned:
-                                    {{ \Carbon\Carbon::parse($sessionGuest->scanned_time)->format('d M Y, h:i A') }}
-                                </p>
-                            @endif
-                        @endif
-
-                        <a href="{{ $scanAgainUrl }}" class="btn btn-primary error-btn btn-block w-100">
-                            Scan Another Card
-                        </a>
-                    </div>
-                </div>
-            @endif
-
+            <a href="{{ $scanAgainUrl }}" class="btn-scan" style="display:block;text-align:center;text-decoration:none;">
+                Scan Another Card
+            </a>
         </div>
-    </div>
-</div>
+    @endif
 
-<div class="container py-4">
-    <div class="row justify-content-center align-items-center">
-        <div class="col-md-8 text-center">
-            <h4 class="mb-3">Scan Invitation Card</h4>
+    @if(session('error-message'))
+        <div class="result-card error">
+            <div class="result-title">{{ session('error-message') }}</div>
+
+            @if($sessionGuest)
+                <div class="guest-details">
+                    <p><strong>Name:</strong> {{ $sessionGuest->guest_name ?? '-' }}</p>
+                    <p><strong>Phone:</strong> {{ $sessionGuest->guest_phone ?? '-' }}</p>
+                    <p><strong>Code:</strong> {{ $sessionGuest->invitation_code ?? '-' }}</p>
+                    <p><strong>Card Type:</strong> {{ $sessionGuest->card_type ?? '-' }}</p>
+
+                    @if(!empty($sessionGuest->scanned_time))
+                        <p>
+                            <strong>Last Scanned:</strong>
+                            {{ \Carbon\Carbon::parse($sessionGuest->scanned_time)->format('d M Y, h:i A') }}
+                        </p>
+                    @endif
+
+                    @if(session('scanning_progress'))
+                        <span class="progress-badge">
+                            {{ session('scanning_progress')['current'] ?? 0 }}
+                            out of
+                            {{ session('scanning_progress')['total'] ?? 1 }}
+                        </span>
+                    @endif
+                </div>
+            @endif
+
+            <a href="{{ $scanAgainUrl }}" class="btn-scan" style="display:block;text-align:center;text-decoration:none;">
+                Try Again
+            </a>
+        </div>
+    @endif
+
+    <div class="scan-card">
+        <div class="scan-header">
+            <h3>Scan Invitation Card</h3>
+            <p>{{ $event->name ?? 'Event' }} | {{ $event->code ?? $event->id }}</p>
+        </div>
+
+        <div class="scan-body">
             <div id="reader"></div>
-            <p class="text-muted mt-2 mb-0">Allow camera permission and scan the invitee QR code.</p>
-        </div>
-    </div>
-</div>
 
-<div class="container mt-2 mb-4">
-    <div class="row justify-content-center">
-        <div class="col-md-6">
-            <form action="{{ route('verifycard', $event->id) }}" method="GET" class="d-flex">
-                <input
-                    type="text"
-                    name="scanned_value"
-                    class="form-control"
-                    placeholder="Enter invitation code"
-                    required
-                    autocomplete="off"
-                >
-                <button type="submit" class="btn btn-success ms-2">
-                    Verify
-                </button>
+            <form id="scanForm" method="GET" action="{{ route('verifycard', $event->id) }}">
+                <input type="hidden" name="scanned_value" id="scanned_value">
             </form>
+
+            <div class="manual-box">
+                <form method="GET" action="{{ route('verifycard', $event->id) }}">
+                    <label for="manual_code">Manual Scan / Enter Code</label>
+                    <input
+                        type="text"
+                        name="scanned_value"
+                        id="manual_code"
+                        placeholder="Enter code or paste QR link, example: 200397"
+                        autocomplete="off"
+                    >
+                    <button type="submit" class="btn-scan">
+                        Verify Invitee
+                    </button>
+                </form>
+            </div>
+
+            <div class="small-note">
+                Scanner accepts invitee code or full private link like /i/200397.
+            </div>
         </div>
     </div>
 </div>
 
-<script src="{{ asset('assets/js/script.js') }}"></script>
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
 <script>
+    let alreadySubmitted = false;
+
+    function submitScannedValue(value) {
+        if (alreadySubmitted) {
+            return;
+        }
+
+        value = String(value || '').trim();
+
+        if (!value) {
+            return;
+        }
+
+        alreadySubmitted = true;
+
+        const input = document.getElementById('scanned_value');
+        const form = document.getElementById('scanForm');
+
+        input.value = value;
+        form.submit();
+    }
+
+    function onScanSuccess(decodedText) {
+        submitScannedValue(decodedText);
+    }
+
+    function onScanFailure(error) {
+        // Keep silent. Scanner continuously retries.
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
-        const notificationContainer = document.querySelector('.notification-container');
-
-        if (notificationContainer && notificationContainer.querySelector('.notification-card')) {
-            setTimeout(() => {
-                notificationContainer.classList.add('show');
-            }, 100);
+        if (!window.Html5QrcodeScanner) {
+            console.warn('QR scanner library not loaded.');
+            return;
         }
 
-        function extractCode(scannedText) {
-            if (!scannedText) {
-                return '';
-            }
-
-            scannedText = scannedText.trim();
-
-            try {
-                const url = new URL(scannedText);
-                const parts = url.pathname.split('/').filter(Boolean);
-
-                if (parts.length > 0) {
-                    return parts[parts.length - 1];
-                }
-            } catch (e) {
-                return scannedText;
-            }
-
-            return scannedText;
-        }
-
-        let html5Qrcode = null;
-        let isScanning = false;
-
-        function startScanner() {
-            if (notificationContainer && notificationContainer.querySelector('.notification-card')) {
-                return;
-            }
-
-            if (typeof Html5Qrcode === 'undefined') {
-                console.error('Html5Qrcode is not loaded. Check assets/js/script.js');
-                return;
-            }
-
-            if (!html5Qrcode) {
-                html5Qrcode = new Html5Qrcode('reader');
-            }
-
-            if (isScanning) {
-                return;
-            }
-
-            const qrCodeSuccessCallback = (decodedText) => {
-                const code = extractCode(decodedText);
-
-                if (!code) {
-                    return;
-                }
-
-                isScanning = false;
-
-                html5Qrcode.stop()
-                    .catch(() => {})
-                    .finally(() => {
-                        window.location.href = '{{ route("verifycard", $event->id) }}?scanned_value=' + encodeURIComponent(code);
-                    });
-            };
-
-            const config = {
+        const scanner = new Html5QrcodeScanner(
+            "reader",
+            {
                 fps: 10,
-                qrbox: {
-                    width: 250,
-                    height: 250
-                }
-            };
+                qrbox: function(viewfinderWidth, viewfinderHeight) {
+                    const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+                    const qrboxSize = Math.floor(minEdge * 0.75);
 
-            html5Qrcode.start(
-                { facingMode: "environment" },
-                config,
-                qrCodeSuccessCallback
-            ).then(() => {
-                isScanning = true;
-            }).catch((error) => {
-                console.error('Camera start failed:', error);
-            });
-        }
+                    return {
+                        width: qrboxSize,
+                        height: qrboxSize
+                    };
+                },
+                rememberLastUsedCamera: true,
+                supportedScanTypes: [
+                    Html5QrcodeScanType.SCAN_TYPE_CAMERA
+                ]
+            },
+            false
+        );
 
-        startScanner();
+        scanner.render(onScanSuccess, onScanFailure);
     });
 </script>
 @endsection

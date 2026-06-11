@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Event;
 use App\Models\EventGuest;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -26,17 +27,16 @@ class ScancardController extends Controller
     }
 
     /**
-     * Supports both old and new scan flows:
-     *
-     * OLD:
+     * Supports:
      * /verify-card/{eventId}?scanned_value=INVITATION_CODE
-     *
-     * NEW:
      * /verify-card/{invitationCode}
+     * /verify-card/{eventId}?scanned_value=https://domain.com/i/INVITATION_CODE
      */
     public function verifycard(Request $request, $id)
     {
-        $scannedValue = trim((string) $request->input('scanned_value', ''));
+        $scannedValue = $this->extractInvitationCode(
+            $request->input('scanned_value', '')
+        );
 
         if ($scannedValue !== '') {
             $event = Event::find($id);
@@ -55,17 +55,14 @@ class ScancardController extends Controller
                 return back()->with([
                     'error-message' => 'Guest not found',
                     'event' => $event,
+                    'scanned_value' => $scannedValue,
                 ]);
             }
 
-            return $this->processGuestScan($guest, $event);
+            return $this->processGuestScan($guest->id);
         }
 
-        /**
-         * New simple scan flow.
-         * Here $id is the scanned invitation code from /verify-card/{code}
-         */
-        $cardCode = trim((string) $id);
+        $cardCode = $this->extractInvitationCode($id);
 
         if ($cardCode === '') {
             return back()->with([
@@ -75,10 +72,6 @@ class ScancardController extends Controller
 
         $guest = EventGuest::where('invitation_code', $cardCode)->first();
 
-        /**
-         * Safe fallback:
-         * Some old QR links may contain guest ID instead of invitation_code.
-         */
         if (! $guest && is_numeric($cardCode)) {
             $guest = EventGuest::find((int) $cardCode);
         }
@@ -86,19 +79,11 @@ class ScancardController extends Controller
         if (! $guest) {
             return back()->with([
                 'error-message' => 'Guest not found',
+                'scanned_value' => $cardCode,
             ]);
         }
 
-        $event = Event::find($guest->event_id);
-
-        if (! $event) {
-            return back()->with([
-                'error-message' => 'Event not found',
-                'guest' => $guest,
-            ]);
-        }
-
-        return $this->processGuestScan($guest, $event);
+        return $this->processGuestScan($guest->id);
     }
 
     public function verifyinvitee(Request $request, $id)
@@ -111,52 +96,147 @@ class ScancardController extends Controller
             ]);
         }
 
-        $event = Event::find($guest->event_id);
-
-        if (! $event) {
-            return back()->with([
-                'error-message' => 'Event not found',
-                'guest' => $guest,
-            ]);
-        }
-
-        return $this->processGuestScan($guest, $event);
+        return $this->processGuestScan($guest->id);
     }
 
-    private function processGuestScan(EventGuest $guest, Event $event)
+    private function processGuestScan(int $guestId)
     {
-        $allowedGuests = $this->allowedGuestsFromCardType($guest->card_type ?? null);
-        $currentScans = (int) ($guest->scanning_times ?? 0);
+        try {
+            $result = DB::transaction(function () use ($guestId) {
+                $guest = EventGuest::whereKey($guestId)
+                    ->lockForUpdate()
+                    ->first();
 
-        if ($currentScans >= $allowedGuests) {
-            return back()->with([
-                'error-message' => 'Card already used',
-                'guest' => $guest,
-                'event' => $event,
-                'scanning_progress' => [
-                    'current' => $currentScans,
+                if (! $guest) {
+                    return [
+                        'status' => 'error',
+                        'message' => 'Guest not found',
+                    ];
+                }
+
+                $event = Event::find($guest->event_id);
+
+                if (! $event) {
+                    return [
+                        'status' => 'error',
+                        'message' => 'Event not found',
+                        'guest' => $guest,
+                    ];
+                }
+
+                $allowedGuests = $this->allowedGuestsFromCardType($guest->card_type ?? null);
+                $currentScans = (int) ($guest->scanning_times ?? 0);
+
+                if ($currentScans >= $allowedGuests) {
+                    return [
+                        'status' => 'already_used',
+                        'message' => 'Card already used',
+                        'guest' => $guest,
+                        'event' => $event,
+                        'current' => $currentScans,
+                        'total' => $allowedGuests,
+                    ];
+                }
+
+                $guest->scanning_times = $currentScans + 1;
+                $guest->scanned_time = now();
+                $guest->save();
+
+                return [
+                    'status' => 'success',
+                    'message' => 'Scanned successfully',
+                    'guest' => $guest->fresh(),
+                    'event' => $event,
+                    'current' => (int) $guest->scanning_times,
                     'total' => $allowedGuests,
-                ],
+                    'send_welcome_sms' => ((int) $guest->scanning_times === 1),
+                ];
+            });
+
+            if (($result['status'] ?? null) === 'success') {
+                if (! empty($result['send_welcome_sms'])) {
+                    $this->sendWelcomeSmsSafely($result['event'], $result['guest']);
+                }
+
+                return back()->with([
+                    'success-message' => $result['message'],
+                    'guest' => $result['guest'],
+                    'event' => $result['event'],
+                    'scanning_progress' => [
+                        'current' => $result['current'],
+                        'total' => $result['total'],
+                    ],
+                ]);
+            }
+
+            if (($result['status'] ?? null) === 'already_used') {
+                return back()->with([
+                    'error-message' => $result['message'],
+                    'guest' => $result['guest'],
+                    'event' => $result['event'],
+                    'scanning_progress' => [
+                        'current' => $result['current'],
+                        'total' => $result['total'],
+                    ],
+                ]);
+            }
+
+            return back()->with([
+                'error-message' => $result['message'] ?? 'Scan failed',
+                'guest' => $result['guest'] ?? null,
+                'event' => $result['event'] ?? null,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Scan processing failed.', [
+                'guest_id' => $guestId,
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return back()->with([
+                'error-message' => 'Scan failed. Please try again.',
             ]);
         }
+    }
 
-        $guest->scanning_times = $currentScans + 1;
-        $guest->scanned_time = now();
-        $guest->save();
+    /**
+     * Accept raw code or full private invitation link.
+     */
+    private function extractInvitationCode($value): string
+    {
+        $value = trim((string) $value);
 
-        if ((int) $guest->scanning_times === 1) {
-            $this->sendWelcomeSmsSafely($event, $guest);
+        if ($value === '') {
+            return '';
         }
 
-        return back()->with([
-            'success-message' => 'Scanned successfully',
-            'guest' => $guest,
-            'event' => $event,
-            'scanning_progress' => [
-                'current' => (int) $guest->scanning_times,
-                'total' => $allowedGuests,
-            ],
-        ]);
+        $value = str_replace('\\', '/', $value);
+
+        /*
+         * Use ~ delimiter, not #.
+         * This prevents "Unknown modifier ']'" when matching URLs with # characters.
+         */
+        if (preg_match('~/i/([^/?#]+)~i', $value, $matches)) {
+            return trim($matches[1]);
+        }
+
+        if (preg_match('~/verify-card/([^/?#]+)~i', $value, $matches)) {
+            return trim($matches[1]);
+        }
+
+        if (filter_var($value, FILTER_VALIDATE_URL)) {
+            $path = trim((string) parse_url($value, PHP_URL_PATH), '/');
+
+            if ($path !== '') {
+                $segments = explode('/', $path);
+                $last = end($segments);
+
+                return trim((string) $last);
+            }
+        }
+
+        return trim($value);
     }
 
     private function allowedGuestsFromCardType(?string $cardType): int
@@ -169,6 +249,14 @@ class ScancardController extends Controller
 
         if ($cardType === 'double') {
             return 2;
+        }
+
+        if ($cardType === 'family') {
+            return 5;
+        }
+
+        if ($cardType === 'group') {
+            return 1;
         }
 
         if (preg_match('/^watu\s+(\d+)$/', $cardType, $matches)) {
@@ -185,6 +273,8 @@ class ScancardController extends Controller
     private function sendWelcomeSmsSafely(Event $event, EventGuest $guest): void
     {
         try {
+            $event->loadMissing('welcomingsms');
+
             $welcomeSms = $event->welcomingsms->SMS_welcoming ?? null;
 
             if (empty($welcomeSms)) {
@@ -198,7 +288,15 @@ class ScancardController extends Controller
             $message = str_replace('#NAME#', $guest->guest_name ?? '', $welcomeSms);
             $phone = $this->normalizePhone($guest->guest_phone);
 
-            $apiUrl = config('services.elive_sms.url', env('ELIVE_SMS_URL', 'https://message.elive.co.tz/api/v1/vendor/message/send'));
+            if ($phone === '') {
+                return;
+            }
+
+            $apiUrl = config(
+                'services.elive_sms.url',
+                env('ELIVE_SMS_URL', 'https://message.elive.co.tz/api/v1/vendor/message/send')
+            );
+
             $apiKey = config('services.elive_sms.api_key', env('ELIVE_SMS_API_KEY'));
             $apiSecret = config('services.elive_sms.api_secret', env('ELIVE_SMS_API_SECRET'));
             $senderId = config('services.elive_sms.sender_id', env('ELIVE_SMS_SENDER_ID', 'elive card'));
@@ -217,7 +315,12 @@ class ScancardController extends Controller
                 'senderId' => $senderId,
                 'messageType' => 'text',
                 'message' => $message,
-                'contacts' => $phone,
+                'contacts' => [
+                    [
+                        'recipient_id' => (string) $guest->id,
+                        'dest_addr' => $phone,
+                    ],
+                ],
             ];
 
             if (! empty($deliveryReportUrl)) {
@@ -227,6 +330,7 @@ class ScancardController extends Controller
             $response = Http::timeout(20)
                 ->withHeaders([
                     'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
                     'api_key' => $apiKey,
                     'api_secret' => $apiSecret,
                 ])
@@ -251,6 +355,10 @@ class ScancardController extends Controller
     {
         $phone = preg_replace('/\D+/', '', (string) $phone);
 
+        if ($phone === '') {
+            return '';
+        }
+
         if (str_starts_with($phone, '255')) {
             return $phone;
         }
@@ -259,6 +367,10 @@ class ScancardController extends Controller
             return '255' . substr($phone, 1);
         }
 
-        return '255' . $phone;
+        if (str_starts_with($phone, '7') || str_starts_with($phone, '6')) {
+            return '255' . $phone;
+        }
+
+        return $phone;
     }
 }
