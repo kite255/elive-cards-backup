@@ -3,161 +3,122 @@
 @section('content')
 <style>
     body {
-        background: #f8fafc;
+        background: #F8FAFC;
     }
 
-    .scan-wrapper {
-        max-width: 760px;
-        margin: 0 auto;
-        padding: 24px 14px;
+    .scan-box {
+        max-width: 520px;
+        margin: 20px auto;
+        padding: 16px;
     }
 
     .scan-card {
-        background: #ffffff;
-        border-radius: 18px;
-        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.10);
-        overflow: hidden;
+        background: #fff;
         border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 8px 20px rgba(0,0,0,.06);
     }
 
-    .scan-header {
-        background: #233F7E;
-        color: #ffffff;
-        padding: 22px;
+    .title {
+        font-size: 22px;
+        font-weight: 700;
+        color: #233F7E;
+        margin-bottom: 4px;
         text-align: center;
     }
 
-    .scan-header h3 {
-        margin: 0;
-        font-weight: 700;
-        font-size: 22px;
-    }
-
-    .scan-header p {
-        margin: 8px 0 0;
-        opacity: 0.9;
+    .subtitle {
+        color: #64748B;
+        text-align: center;
+        margin-bottom: 16px;
         font-size: 14px;
-    }
-
-    .scan-body {
-        padding: 20px;
     }
 
     #reader {
         width: 100%;
-        max-width: 520px;
-        min-height: 320px;
-        margin: 0 auto;
-        border: 1px solid #e5e7eb;
-        border-radius: 14px;
-        overflow: hidden;
-        background: #f8f9fa;
-    }
-
-    .manual-box {
-        margin-top: 22px;
-        padding: 16px;
-        background: #f9fafb;
-        border: 1px solid #e5e7eb;
-        border-radius: 14px;
-    }
-
-    .manual-box label {
-        font-weight: 700;
-        color: #111827;
-        margin-bottom: 8px;
-        display: block;
-    }
-
-    .manual-box input {
-        width: 100%;
-        padding: 12px 14px;
-        border: 1px solid #d1d5db;
+        min-height: 300px;
         border-radius: 10px;
+        overflow: hidden;
+        background: #111827;
+    }
+
+    .status {
+        margin-top: 12px;
+        padding: 10px;
+        border-radius: 8px;
+        background: #EFF6FF;
+        color: #1E3A8A;
+        font-weight: 600;
+        font-size: 14px;
+        text-align: center;
+    }
+
+    .status.error {
+        background: #FEE2E2;
+        color: #991B1B;
+    }
+
+    .status.success {
+        background: #DCFCE7;
+        color: #166534;
+    }
+
+    .alert-box {
+        padding: 12px;
+        border-radius: 10px;
+        margin-bottom: 14px;
+        font-weight: 600;
+    }
+
+    .alert-success {
+        background: #DCFCE7;
+        color: #166534;
+    }
+
+    .alert-error {
+        background: #FEE2E2;
+        color: #991B1B;
+    }
+
+    .guest-info {
+        margin-top: 10px;
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 1.6;
+    }
+
+    .manual-form {
+        margin-top: 16px;
+    }
+
+    .manual-form input {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #CBD5E1;
+        border-radius: 8px;
         font-size: 16px;
     }
 
-    .btn-scan {
+    .btn-main {
         width: 100%;
-        margin-top: 12px;
+        margin-top: 10px;
+        padding: 12px;
         border: none;
-        border-radius: 10px;
-        padding: 12px 14px;
-        font-weight: 700;
+        border-radius: 8px;
         background: #F99A12;
         color: #111827;
-        cursor: pointer;
-    }
-
-    .btn-scan:hover {
-        background: #e48600;
-    }
-
-    .result-card {
-        margin-bottom: 18px;
-        border-radius: 16px;
-        padding: 18px;
-        background: #ffffff;
-        border: 1px solid #e5e7eb;
-        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-    }
-
-    .result-card.success {
-        border-left: 6px solid #16a34a;
-    }
-
-    .result-card.error {
-        border-left: 6px solid #dc2626;
-    }
-
-    .result-title {
-        font-weight: 800;
-        font-size: 20px;
-        margin-bottom: 10px;
-    }
-
-    .success .result-title {
-        color: #16a34a;
-    }
-
-    .error .result-title {
-        color: #dc2626;
-    }
-
-    .guest-details {
-        background: #f8fafc;
-        padding: 14px;
-        border-radius: 12px;
-        margin-top: 12px;
-    }
-
-    .guest-details p {
-        margin: 5px 0;
-        color: #374151;
-        font-size: 14px;
-    }
-
-    .progress-badge {
-        display: inline-block;
-        margin-top: 8px;
-        padding: 7px 12px;
-        border-radius: 999px;
-        background: #dcfce7;
-        color: #166534;
         font-weight: 700;
-        font-size: 13px;
-    }
-
-    .error .progress-badge {
-        background: #fee2e2;
-        color: #991b1b;
-    }
-
-    .small-note {
-        margin-top: 12px;
-        color: #6b7280;
-        font-size: 13px;
+        cursor: pointer;
         text-align: center;
+        text-decoration: none;
+        display: block;
+    }
+
+    .btn-main:hover {
+        background: #E48600;
+        color: #111827;
+        text-decoration: none;
     }
 </style>
 
@@ -167,173 +128,140 @@
     $scanAgainUrl = route('scan-cards.index', $sessionEvent->code ?? $event->code ?? $event->id);
 @endphp
 
-<div class="scan-wrapper">
-
-    @if(session('success-message'))
-        <div class="result-card success">
-            <div class="result-title">{{ session('success-message') }}</div>
-
-            @if($sessionGuest)
-                <div class="guest-details">
-                    <p><strong>Name:</strong> {{ $sessionGuest->guest_name ?? '-' }}</p>
-                    <p><strong>Phone:</strong> {{ $sessionGuest->guest_phone ?? '-' }}</p>
-                    <p><strong>Code:</strong> {{ $sessionGuest->invitation_code ?? '-' }}</p>
-                    <p><strong>Card Type:</strong> {{ $sessionGuest->card_type ?? '-' }}</p>
-
-                    @if(!empty($sessionGuest->scanned_time))
-                        <p>
-                            <strong>Scanned Time:</strong>
-                            {{ \Carbon\Carbon::parse($sessionGuest->scanned_time)->format('d M Y, h:i A') }}
-                        </p>
-                    @endif
-
-                    @if(session('scanning_progress'))
-                        <span class="progress-badge">
-                            {{ session('scanning_progress')['current'] ?? 0 }}
-                            out of
-                            {{ session('scanning_progress')['total'] ?? 1 }}
-                        </span>
-                    @endif
-                </div>
-            @endif
-
-            <a href="{{ $scanAgainUrl }}" class="btn-scan" style="display:block;text-align:center;text-decoration:none;">
-                Scan Another Card
-            </a>
-        </div>
-    @endif
-
-    @if(session('error-message'))
-        <div class="result-card error">
-            <div class="result-title">{{ session('error-message') }}</div>
-
-            @if($sessionGuest)
-                <div class="guest-details">
-                    <p><strong>Name:</strong> {{ $sessionGuest->guest_name ?? '-' }}</p>
-                    <p><strong>Phone:</strong> {{ $sessionGuest->guest_phone ?? '-' }}</p>
-                    <p><strong>Code:</strong> {{ $sessionGuest->invitation_code ?? '-' }}</p>
-                    <p><strong>Card Type:</strong> {{ $sessionGuest->card_type ?? '-' }}</p>
-
-                    @if(!empty($sessionGuest->scanned_time))
-                        <p>
-                            <strong>Last Scanned:</strong>
-                            {{ \Carbon\Carbon::parse($sessionGuest->scanned_time)->format('d M Y, h:i A') }}
-                        </p>
-                    @endif
-
-                    @if(session('scanning_progress'))
-                        <span class="progress-badge">
-                            {{ session('scanning_progress')['current'] ?? 0 }}
-                            out of
-                            {{ session('scanning_progress')['total'] ?? 1 }}
-                        </span>
-                    @endif
-                </div>
-            @endif
-
-            <a href="{{ $scanAgainUrl }}" class="btn-scan" style="display:block;text-align:center;text-decoration:none;">
-                Try Again
-            </a>
-        </div>
-    @endif
-
+<div class="scan-box">
     <div class="scan-card">
-        <div class="scan-header">
-            <h3>Scan Invitation Card</h3>
-            <p>{{ $event->name ?? 'Event' }} | {{ $event->code ?? $event->id }}</p>
-        </div>
+        <div class="title">Scan Card</div>
+        <div class="subtitle">{{ $event->name ?? 'Event' }} • Use back camera</div>
 
-        <div class="scan-body">
-            <div id="reader"></div>
+        @if(session('success-message'))
+            <div class="alert-box alert-success">
+                ✅ {{ session('success-message') }}
 
-            <form id="scanForm" method="GET" action="{{ route('verifycard', $event->id) }}">
-                <input type="hidden" name="scanned_value" id="scanned_value">
-            </form>
+                @if($sessionGuest)
+                    <div class="guest-info">
+                        <strong>Name:</strong> {{ $sessionGuest->guest_name ?? '-' }}<br>
+                        <strong>Phone:</strong> {{ $sessionGuest->guest_phone ?? '-' }}<br>
+                        <strong>Code:</strong> {{ $sessionGuest->invitation_code ?? '-' }}<br>
+                        <strong>Card Type:</strong> {{ $sessionGuest->card_type ?? '-' }}
 
-            <div class="manual-box">
-                <form method="GET" action="{{ route('verifycard', $event->id) }}">
-                    <label for="manual_code">Manual Scan / Enter Code</label>
-                    <input
-                        type="text"
-                        name="scanned_value"
-                        id="manual_code"
-                        placeholder="Enter code or paste QR link, example: 200397"
-                        autocomplete="off"
-                    >
-                    <button type="submit" class="btn-scan">
-                        Verify Invitee
-                    </button>
-                </form>
+                        @if(!empty($sessionGuest->scanned_time))
+                            <br><strong>Scanned:</strong> {{ \Carbon\Carbon::parse($sessionGuest->scanned_time)->format('d M Y, h:i A') }}
+                        @endif
+
+                        @if(session('scanning_progress'))
+                            <br><strong>Progress:</strong>
+                            {{ session('scanning_progress')['current'] ?? 0 }} / {{ session('scanning_progress')['total'] ?? 1 }}
+                        @endif
+                    </div>
+                @endif
+
+                <a href="{{ $scanAgainUrl }}" class="btn-main">Scan Another</a>
             </div>
+        @endif
 
-            <div class="small-note">
-                Scanner accepts invitee code or full private link like /i/200397.
+        @if(session('error-message'))
+            <div class="alert-box alert-error">
+                ❌ {{ session('error-message') }}
+
+                @if($sessionGuest)
+                    <div class="guest-info">
+                        <strong>Name:</strong> {{ $sessionGuest->guest_name ?? '-' }}<br>
+                        <strong>Phone:</strong> {{ $sessionGuest->guest_phone ?? '-' }}<br>
+                        <strong>Code:</strong> {{ $sessionGuest->invitation_code ?? '-' }}<br>
+                        <strong>Card Type:</strong> {{ $sessionGuest->card_type ?? '-' }}
+
+                        @if(session('scanning_progress'))
+                            <br><strong>Progress:</strong>
+                            {{ session('scanning_progress')['current'] ?? 0 }} / {{ session('scanning_progress')['total'] ?? 1 }}
+                        @endif
+                    </div>
+                @endif
+
+                <a href="{{ $scanAgainUrl }}" class="btn-main">Try Again</a>
             </div>
-        </div>
+        @endif
+
+        <div id="reader"></div>
+        <div id="cameraStatus" class="status">Opening back camera...</div>
+
+        <form id="scanForm" method="GET" action="{{ route('verifycard', $event->id) }}">
+            <input type="hidden" name="scanned_value" id="scanned_value">
+        </form>
+
+        <form class="manual-form" method="GET" action="{{ route('verifycard', $event->id) }}">
+            <input type="text" name="scanned_value" placeholder="Enter invitation code manually" autocomplete="off">
+            <button type="submit" class="btn-main">Verify Manually</button>
+        </form>
     </div>
 </div>
 
 <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
 <script>
-    let alreadySubmitted = false;
+    let scanner = null;
+    let submitted = false;
 
-    function submitScannedValue(value) {
-        if (alreadySubmitted) {
-            return;
-        }
+    function setStatus(message, type = '') {
+        const status = document.getElementById('cameraStatus');
+        status.className = 'status ' + type;
+        status.textContent = message;
+    }
+
+    function submitScan(value) {
+        if (submitted) return;
 
         value = String(value || '').trim();
+        if (!value) return;
 
-        if (!value) {
+        submitted = true;
+        setStatus('QR detected. Verifying...', 'success');
+
+        document.getElementById('scanned_value').value = value;
+
+        if (scanner) {
+            scanner.stop().finally(function () {
+                document.getElementById('scanForm').submit();
+            });
+        } else {
+            document.getElementById('scanForm').submit();
+        }
+    }
+
+    function startScanner() {
+        if (!window.isSecureContext) {
+            setStatus('Camera requires HTTPS.', 'error');
             return;
         }
 
-        alreadySubmitted = true;
+        scanner = new Html5Qrcode('reader');
 
-        const input = document.getElementById('scanned_value');
-        const form = document.getElementById('scanForm');
+        const config = {
+            fps: 10,
+            qrbox: { width: 250, height: 250 },
+            rememberLastUsedCamera: false
+        };
 
-        input.value = value;
-        form.submit();
+        scanner.start(
+            { facingMode: { exact: 'environment' } },
+            config,
+            submitScan,
+            function () {}
+        ).then(function () {
+            setStatus('Back camera ready. Scan QR code.', 'success');
+        }).catch(function () {
+            scanner.start(
+                { facingMode: 'environment' },
+                config,
+                submitScan,
+                function () {}
+            ).then(function () {
+                setStatus('Back camera ready. Scan QR code.', 'success');
+            }).catch(function () {
+                setStatus('Camera failed. Allow camera permission and refresh.', 'error');
+            });
+        });
     }
 
-    function onScanSuccess(decodedText) {
-        submitScannedValue(decodedText);
-    }
-
-    function onScanFailure(error) {
-        // Keep silent. Scanner continuously retries.
-    }
-
-    document.addEventListener('DOMContentLoaded', function () {
-        if (!window.Html5QrcodeScanner) {
-            console.warn('QR scanner library not loaded.');
-            return;
-        }
-
-        const scanner = new Html5QrcodeScanner(
-            "reader",
-            {
-                fps: 10,
-                qrbox: function(viewfinderWidth, viewfinderHeight) {
-                    const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-                    const qrboxSize = Math.floor(minEdge * 0.75);
-
-                    return {
-                        width: qrboxSize,
-                        height: qrboxSize
-                    };
-                },
-                rememberLastUsedCamera: true,
-                supportedScanTypes: [
-                    Html5QrcodeScanType.SCAN_TYPE_CAMERA
-                ]
-            },
-            false
-        );
-
-        scanner.render(onScanSuccess, onScanFailure);
-    });
+    document.addEventListener('DOMContentLoaded', startScanner);
 </script>
 @endsection

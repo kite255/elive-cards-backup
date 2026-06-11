@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class ScancardController extends Controller
 {
@@ -15,8 +16,8 @@ class ScancardController extends Controller
     {
         $event = Event::where('code', $id)->first();
 
-        if (! $event) {
-            $event = Event::find($id);
+        if (! $event && is_numeric($id)) {
+            $event = Event::find((int) $id);
         }
 
         if (! $event) {
@@ -29,8 +30,8 @@ class ScancardController extends Controller
     /**
      * Supports:
      * /verify-card/{eventId}?scanned_value=INVITATION_CODE
-     * /verify-card/{invitationCode}
      * /verify-card/{eventId}?scanned_value=https://domain.com/i/INVITATION_CODE
+     * /verify-card/{invitationCode}
      */
     public function verifycard(Request $request, $id)
     {
@@ -38,22 +39,36 @@ class ScancardController extends Controller
             $request->input('scanned_value', '')
         );
 
+        /*
+        |--------------------------------------------------------------------------
+        | Scanner page flow
+        |--------------------------------------------------------------------------
+        | The scanner page posts scanned_value with the event id in the route.
+        */
         if ($scannedValue !== '') {
-            $event = Event::find($id);
+            $event = Event::where('code', $id)->first();
+
+            if (! $event && is_numeric($id)) {
+                $event = Event::find((int) $id);
+            }
 
             if (! $event) {
                 return back()->with([
-                    'error-message' => 'Event not found',
+                    'error-message' => 'Event not found.',
+                    'scanned_value' => $scannedValue,
                 ]);
             }
 
             $guest = EventGuest::where('event_id', $event->id)
-                ->where('invitation_code', $scannedValue)
+                ->where(function ($query) use ($scannedValue) {
+                    $query->where('invitation_code', $scannedValue)
+                        ->orWhere('id', is_numeric($scannedValue) ? (int) $scannedValue : 0);
+                })
                 ->first();
 
             if (! $guest) {
                 return back()->with([
-                    'error-message' => 'Guest not found',
+                    'error-message' => 'Guest not found for this event.',
                     'event' => $event,
                     'scanned_value' => $scannedValue,
                 ]);
@@ -62,11 +77,17 @@ class ScancardController extends Controller
             return $this->processGuestScan($guest->id);
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Direct QR URL flow
+        |--------------------------------------------------------------------------
+        | Example: /verify-card/INVITATION_CODE
+        */
         $cardCode = $this->extractInvitationCode($id);
 
         if ($cardCode === '') {
             return back()->with([
-                'error-message' => 'Please scan card to proceed',
+                'error-message' => 'Please scan card to proceed.',
             ]);
         }
 
@@ -78,7 +99,7 @@ class ScancardController extends Controller
 
         if (! $guest) {
             return back()->with([
-                'error-message' => 'Guest not found',
+                'error-message' => 'Guest not found.',
                 'scanned_value' => $cardCode,
             ]);
         }
@@ -92,7 +113,7 @@ class ScancardController extends Controller
 
         if (! $guest) {
             return back()->with([
-                'error-message' => 'Guest not found',
+                'error-message' => 'Guest not found.',
             ]);
         }
 
@@ -110,7 +131,7 @@ class ScancardController extends Controller
                 if (! $guest) {
                     return [
                         'status' => 'error',
-                        'message' => 'Guest not found',
+                        'message' => 'Guest not found.',
                     ];
                 }
 
@@ -119,7 +140,7 @@ class ScancardController extends Controller
                 if (! $event) {
                     return [
                         'status' => 'error',
-                        'message' => 'Event not found',
+                        'message' => 'Event not found.',
                         'guest' => $guest,
                     ];
                 }
@@ -130,7 +151,7 @@ class ScancardController extends Controller
                 if ($currentScans >= $allowedGuests) {
                     return [
                         'status' => 'already_used',
-                        'message' => 'Card already used',
+                        'message' => 'Card already used.',
                         'guest' => $guest,
                         'event' => $event,
                         'current' => $currentScans,
@@ -138,18 +159,34 @@ class ScancardController extends Controller
                     ];
                 }
 
-                $guest->scanning_times = $currentScans + 1;
-                $guest->scanned_time = now();
+                $newScanCount = $currentScans + 1;
+
+                $guest->scanning_times = $newScanCount;
+
+                /*
+                |--------------------------------------------------------------------------
+                | Safe production check
+                |--------------------------------------------------------------------------
+                | Do not crash scanning if the scanned_time migration was not applied yet.
+                */
+                if (Schema::hasColumn($guest->getTable(), 'scanned_time')) {
+                    $guest->scanned_time = now();
+                }
+
+                if (Schema::hasColumn($guest->getTable(), 'scanned_at')) {
+                    $guest->scanned_at = now();
+                }
+
                 $guest->save();
 
                 return [
                     'status' => 'success',
-                    'message' => 'Scanned successfully',
+                    'message' => 'Scanned successfully.',
                     'guest' => $guest->fresh(),
                     'event' => $event,
-                    'current' => (int) $guest->scanning_times,
+                    'current' => $newScanCount,
                     'total' => $allowedGuests,
-                    'send_welcome_sms' => ((int) $guest->scanning_times === 1),
+                    'send_welcome_sms' => ($newScanCount === 1),
                 ];
             });
 
@@ -182,7 +219,7 @@ class ScancardController extends Controller
             }
 
             return back()->with([
-                'error-message' => $result['message'] ?? 'Scan failed',
+                'error-message' => $result['message'] ?? 'Scan failed.',
                 'guest' => $result['guest'] ?? null,
                 'event' => $result['event'] ?? null,
             ]);
@@ -201,7 +238,7 @@ class ScancardController extends Controller
     }
 
     /**
-     * Accept raw code or full private invitation link.
+     * Accept raw invitation code, serial, guest id, or full URL.
      */
     private function extractInvitationCode($value): string
     {
@@ -214,17 +251,31 @@ class ScancardController extends Controller
         $value = str_replace('\\', '/', $value);
 
         /*
-         * Use ~ delimiter, not #.
-         * This prevents "Unknown modifier ']'" when matching URLs with # characters.
-         */
+        |--------------------------------------------------------------------------
+        | Private invitation URL
+        |--------------------------------------------------------------------------
+        | Example: https://domain.com/i/ABC123
+        */
         if (preg_match('~/i/([^/?#]+)~i', $value, $matches)) {
             return trim($matches[1]);
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Verify card URL
+        |--------------------------------------------------------------------------
+        | Example: https://domain.com/verify-card/ABC123
+        */
         if (preg_match('~/verify-card/([^/?#]+)~i', $value, $matches)) {
             return trim($matches[1]);
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Generic URL fallback
+        |--------------------------------------------------------------------------
+        | Get the last path segment.
+        */
         if (filter_var($value, FILTER_VALIDATE_URL)) {
             $path = trim((string) parse_url($value, PHP_URL_PATH), '/');
 
@@ -243,23 +294,27 @@ class ScancardController extends Controller
     {
         $cardType = strtolower(trim((string) $cardType));
 
-        if ($cardType === 'single') {
+        if ($cardType === '') {
             return 1;
         }
 
-        if ($cardType === 'double') {
+        if (str_contains($cardType, 'single')) {
+            return 1;
+        }
+
+        if (str_contains($cardType, 'double')) {
             return 2;
         }
 
-        if ($cardType === 'family') {
+        if (str_contains($cardType, 'family')) {
             return 5;
         }
 
-        if ($cardType === 'group') {
+        if (str_contains($cardType, 'group')) {
             return 1;
         }
 
-        if (preg_match('/^watu\s+(\d+)$/', $cardType, $matches)) {
+        if (preg_match('/^watu\s+(\d+)$/i', $cardType, $matches)) {
             return max(1, (int) $matches[1]);
         }
 
