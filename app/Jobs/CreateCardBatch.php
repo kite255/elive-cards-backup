@@ -22,20 +22,14 @@ class CreateCardBatch implements ShouldQueue
 
     public int $tries = 3;
 
-    public int $timeout = 180;
+    public int $timeout = 300;
 
     public int $backoff = 10;
 
     protected array $guestIds;
 
-    /**
-     * Must match preview and other generators.
-     */
     private int $designWidth = 420;
 
-    /**
-     * Must match preview and other generators.
-     */
     private int $designHeight = 620;
 
     public function __construct(array $guestIds)
@@ -64,14 +58,7 @@ class CreateCardBatch implements ShouldQueue
                         continue;
                     }
 
-                    $eventCode = $event->code ?? $event->event_code ?? null;
-
-                    if (! $eventCode) {
-                        $eventCode = 'event-' . $event->id;
-                    }
-
-                    $eventCode = trim((string) $eventCode);
-
+                    $eventCode = trim((string) ($event->code ?? $event->event_code ?? 'event-' . $event->id));
                     $card = $event->eventCard;
 
                     /*
@@ -92,21 +79,35 @@ class CreateCardBatch implements ShouldQueue
 
                     /*
                     |--------------------------------------------------------------------------
-                    | Keep existing generated card if the real image still exists
+                    | Skip already generated cards
                     |--------------------------------------------------------------------------
-                    | This avoids breaking already sent WhatsApp/SMS links.
+                    | This is important for speed and prevents breaking already-sent links.
                     */
                     $existingPdf = GuestPdf::where('event_guests_id', $guestId)->first();
 
                     if ($existingPdf && $this->guestCardStillExists($existingPdf, $cardDirectory)) {
+                        $existingPath = $this->resolveExistingCardPath($existingPdf, $cardDirectory);
+
+                        if ($existingPath && $existingPdf->pdf_name !== $existingPath) {
+                            $existingPdf->pdf_name = $existingPath;
+                            $existingPdf->has_pdf = 1;
+                            $existingPdf->save();
+                        }
+
+                        SendWhatsappCard::firstOrCreate(
+                            [
+                                'event_id' => $event->id,
+                                'event_guests_id' => $guestId,
+                                'guest_pdf_id' => $existingPdf->id,
+                            ],
+                            [
+                                'sent_status' => 'not sent',
+                            ]
+                        );
+
                         continue;
                     }
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Resolve QR safely from storage/app/public
-                    |--------------------------------------------------------------------------
-                    */
                     $qrRelativePath = $this->resolveQrPath(
                         $guest->qrcode?->qrcode_name,
                         $event,
@@ -115,11 +116,6 @@ class CreateCardBatch implements ShouldQueue
 
                     $hasQrCode = $qrRelativePath !== null;
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Get exact output positions from EventCard helper methods
-                    |--------------------------------------------------------------------------
-                    */
                     $guestNameX = method_exists($card, 'getGuestX')
                         ? $card->getGuestX($this->designWidth)
                         : ($card->guestNameX ?? $card->guest_name_x ?? 210);
@@ -165,13 +161,6 @@ class CreateCardBatch implements ShouldQueue
                     $data = [
                         'guest_name' => $guest->guest_name,
                         'guest_cardtype' => strtoupper((string) $guest->card_type),
-
-                        /*
-                        |--------------------------------------------------------------------------
-                        | Important
-                        |--------------------------------------------------------------------------
-                        | Pass public-disk relative QR path.
-                        */
                         'guest_qrcode' => $hasQrCode ? $qrRelativePath : null,
 
                         'event_code' => $eventCode,
@@ -199,11 +188,6 @@ class CreateCardBatch implements ShouldQueue
                         'cardTypeBackgroundColor' => 'transparent',
                     ];
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Resolve correct Blade view safely
-                    |--------------------------------------------------------------------------
-                    */
                     $viewName = $hasQrCode
                         ? $this->resolveCardWithQrView()
                         : 'venecardDashboard.creatingcardview.card-without-qr-code';
@@ -221,8 +205,9 @@ class CreateCardBatch implements ShouldQueue
 
                     /*
                     |--------------------------------------------------------------------------
-                    | Unique stable filenames
+                    | Stable filename
                     |--------------------------------------------------------------------------
+                    | We keep a unique filename to avoid overwriting sent cards by accident.
                     */
                     $uniqueName = 'card_' . $guest->id . '_' . now()->format('YmdHis') . '_' . uniqid();
 
@@ -235,11 +220,6 @@ class CreateCardBatch implements ShouldQueue
                     $pdfPath = Storage::disk('public')->path($pdfRelativePath);
                     $imagePath = Storage::disk('public')->path($imageRelativePath);
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Generate temporary PDF
-                    |--------------------------------------------------------------------------
-                    */
                     $pdf = Pdf::loadView($viewName, $data)
                         ->setPaper([0, 0, $this->designWidth, $this->designHeight], 'portrait');
 
@@ -262,18 +242,14 @@ class CreateCardBatch implements ShouldQueue
                     |--------------------------------------------------------------------------
                     | Convert PDF to final JPG
                     |--------------------------------------------------------------------------
+                    | 300 DPI + quality 100 is slow for bulk generation.
+                    | 150 DPI + quality 85 is much faster and still good for WhatsApp/SMS.
                     */
                     $converter = new SpatiePdf($pdfPath);
-                    $converter->quality(100);
-                    $converter->resolution(300);
+                    $converter->quality(85);
+                    $converter->resolution(150);
                     $converter->save($imagePath);
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Delete only temporary PDF
-                    |--------------------------------------------------------------------------
-                    | Never delete final JPG.
-                    */
                     if (Storage::disk('public')->exists($pdfRelativePath)) {
                         Storage::disk('public')->delete($pdfRelativePath);
                     }
@@ -293,13 +269,13 @@ class CreateCardBatch implements ShouldQueue
 
                     /*
                     |--------------------------------------------------------------------------
-                    | Save or update GuestPdf
+                    | Save full public-disk relative path
                     |--------------------------------------------------------------------------
-                    | Keep existing DB style:
-                    | pdf_name = only filename.
+                    | Example:
+                    | cards/PDFCards/AB4653/card_1_xxx.jpg
                     */
                     if ($existingPdf) {
-                        $existingPdf->pdf_name = $imageFile;
+                        $existingPdf->pdf_name = $imageRelativePath;
                         $existingPdf->has_pdf = 1;
                         $existingPdf->save();
 
@@ -307,16 +283,11 @@ class CreateCardBatch implements ShouldQueue
                     } else {
                         $pdfModel = GuestPdf::create([
                             'event_guests_id' => $guestId,
-                            'pdf_name' => $imageFile,
+                            'pdf_name' => $imageRelativePath,
                             'has_pdf' => 1,
                         ]);
                     }
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Create WhatsApp send record safely
-                    |--------------------------------------------------------------------------
-                    */
                     SendWhatsappCard::firstOrCreate(
                         [
                             'event_id' => $event->id,
@@ -367,28 +338,34 @@ class CreateCardBatch implements ShouldQueue
 
     private function guestCardStillExists(GuestPdf $guestPdf, string $cardDirectory): bool
     {
+        return $this->resolveExistingCardPath($guestPdf, $cardDirectory) !== null;
+    }
+
+    private function resolveExistingCardPath(GuestPdf $guestPdf, string $cardDirectory): ?string
+    {
         if (! $guestPdf->pdf_name) {
-            return false;
+            return null;
         }
 
-        $fileName = basename((string) $guestPdf->pdf_name);
+        $storedPath = $this->normalizePublicPath((string) $guestPdf->pdf_name);
+        $fileName = basename($storedPath);
 
         $possiblePaths = [
+            $storedPath,
             "{$cardDirectory}/{$fileName}",
-            $this->normalizePublicPath((string) $guestPdf->pdf_name),
+            "cards/PDFCards/{$fileName}",
         ];
 
-        foreach ($possiblePaths as $path) {
+        foreach (array_values(array_unique(array_filter($possiblePaths))) as $path) {
             if (
-                $path &&
                 Storage::disk('public')->exists($path) &&
                 Storage::disk('public')->size($path) > 0
             ) {
-                return true;
+                return $path;
             }
         }
 
-        return false;
+        return null;
     }
 
     private function resolveQrPath(?string $guestQrCodeName, Event $event, string $eventCode): ?string
@@ -404,6 +381,7 @@ class CreateCardBatch implements ShouldQueue
         if ($storedPath) {
             $candidates[] = $storedPath;
             $candidates[] = 'qrcodes/' . trim($eventCode, '/') . '/' . basename($storedPath);
+            $candidates[] = 'qr-codes/' . basename($storedPath);
             $candidates[] = 'events/event-' . $event->id . '/qr-codes/' . basename($storedPath);
         }
 
@@ -428,13 +406,10 @@ class CreateCardBatch implements ShouldQueue
         $path = trim(str_replace('\\', '/', $path));
         $path = ltrim($path, '/');
 
-        if (str_starts_with($path, 'storage/')) {
-            $path = substr($path, strlen('storage/'));
-        }
-
-        if (str_starts_with($path, 'public/')) {
-            $path = substr($path, strlen('public/'));
-        }
+        $path = preg_replace('#^/storage/#i', '', $path);
+        $path = preg_replace('#^storage/#i', '', $path);
+        $path = preg_replace('#^app/public/#i', '', $path);
+        $path = preg_replace('#^public/#i', '', $path);
 
         return $path;
     }
