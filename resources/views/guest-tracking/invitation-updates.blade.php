@@ -1,524 +1,573 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title>Invitation Progress</title>
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+
     <style>
         :root {
-            --primary-color: #667eea;
-            --secondary-color: #764ba2;
-            --success-color: #28a745;
-            --danger-color: #dc3545;
-            --warning-color: #ffc107;
-            --info-color: #17a2b8;
-            --light-bg: #f8f9fa;
-            --card-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-            --card-shadow-hover: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+            --elive-blue: #233F7E;
+            --elive-blue-dark: #1D356A;
+            --elive-orange: #F99A12;
+            --success-color: #16A34A;
+            --danger-color: #DC2626;
+            --warning-color: #F59E0B;
+            --muted-color: #6B7280;
+            --soft-bg: #F8FAFC;
+            --white: #FFFFFF;
+            --border: #E5E7EB;
+            --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
         }
 
         body {
-            background: #fafafa;
+            background: var(--soft-bg);
             min-height: 100vh;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: Arial, sans-serif;
+            color: #111827;
         }
 
         .main-container {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            margin: 2rem auto;
+            background: var(--white);
+            border-radius: 18px;
+            box-shadow: var(--shadow);
+            margin: 24px auto;
             overflow: hidden;
+            border: 1px solid var(--border);
         }
 
         .header-section {
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            background: linear-gradient(135deg, var(--elive-blue), var(--elive-blue-dark));
             color: white;
-            padding: 2rem;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .header-section::before {
-            content: '';
-            position: absolute;
-            top: -50%;
-            right: -50%;
-            width: 200%;
-            height: 200%;
-            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-            animation: float 6s ease-in-out infinite;
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translateY(0px) rotate(0deg); }
-            50% { transform: translateY(-20px) rotate(180deg); }
+            padding: 28px;
         }
 
         .event-title {
-            font-size: 2rem;
+            font-size: 28px;
             font-weight: 700;
-            margin-bottom: 0.5rem;
-            position: relative;
-            z-index: 1;
+            margin-bottom: 6px;
+        }
+
+        .event-title span {
+            color: var(--elive-orange);
         }
 
         .event-subtitle {
-            font-size: 1.1rem;
-            opacity: 0.9;
-            position: relative;
-            z-index: 1;
+            font-size: 15px;
+            opacity: 0.92;
+            margin-bottom: 0;
         }
 
         .social-link {
-            position: relative;
-            z-index: 1;
-            background: rgba(255, 255, 255, 0.2);
-            padding: 0.5rem 1rem;
-            border-radius: 25px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.14);
+            padding: 8px 14px;
+            border-radius: 999px;
             text-decoration: none;
             color: white;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
+            font-weight: 600;
+            border: 1px solid rgba(255, 255, 255, 0.18);
         }
 
         .social-link:hover {
-            background: rgba(255, 255, 255, 0.3);
             color: white;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            background: rgba(255, 255, 255, 0.22);
         }
 
-        .search-container {
+        .stats-container,
+        .search-container,
+        .table-container {
             background: white;
-            padding: 1.5rem;
-            border-bottom: 1px solid #e9ecef;
-        }
-
-        .search-input {
-            border: 2px solid #e9ecef;
-            border-radius: 15px;
-            padding: 0.75rem 1rem;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            background: #f8f9fa;
-        }
-
-        .search-input:focus {
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
-            background: white;
-        }
-
-        .stats-container {
-            background: white;
-            padding: 1.5rem;
-            border-bottom: 1px solid #e9ecef;
-        }
-
-        .stat-item {
-            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-            padding: 1rem;
-            border-radius: 15px;
-            text-align: center;
-            border: 1px solid #dee2e6;
-            transition: all 0.3s ease;
-        }
-
-        .stat-item:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--card-shadow-hover);
-        }
-
-        .stat-number {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--primary-color);
-            display: block;
-        }
-
-        .stat-label {
-            font-size: 0.9rem;
-            color: #6c757d;
-            font-weight: 500;
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
         }
 
         .table-container {
+            border-bottom: none;
+        }
+
+        .stat-item {
+            background: #F9FAFB;
+            padding: 16px;
+            border-radius: 14px;
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+
+        .stat-number {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--elive-blue);
+            display: block;
+            line-height: 1;
+        }
+
+        .stat-label {
+            margin-top: 8px;
+            display: block;
+            font-size: 13px;
+            color: var(--muted-color);
+            font-weight: 600;
+        }
+
+        .search-input {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 11px 14px;
+            font-size: 15px;
+            background: #F9FAFB;
+        }
+
+        .search-input:focus {
+            border-color: var(--elive-blue);
+            box-shadow: 0 0 0 0.2rem rgba(35, 63, 126, 0.16);
             background: white;
-            padding: 1.5rem;
+        }
+
+        .input-group-text {
+            border: 1px solid var(--border);
+            border-radius: 12px 0 0 12px;
+            background: #F9FAFB;
         }
 
         .custom-table {
-            border-radius: 15px;
+            border-radius: 14px;
             overflow: hidden;
-            box-shadow: var(--card-shadow);
-            border: none;
+            border: 1px solid var(--border);
+            margin-bottom: 0;
         }
 
         .custom-table thead th {
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            background: var(--elive-blue);
             color: white;
             border: none;
-            padding: 1rem;
-            font-weight: 600;
+            padding: 14px;
+            font-weight: 700;
+            font-size: 12px;
             text-transform: uppercase;
-            font-size: 0.85rem;
-            letter-spacing: 0.5px;
-        }
-
-        .custom-table tbody tr {
-            transition: all 0.3s ease;
-            border-bottom: 1px solid #f1f3f4;
-        }
-
-        .custom-table tbody tr:hover {
-            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-            transform: scale(1.01);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            letter-spacing: 0.4px;
+            white-space: nowrap;
         }
 
         .custom-table tbody td {
-            padding: 1rem;
+            padding: 14px;
             vertical-align: middle;
-            border: none;
+            border-bottom: 1px solid #F1F5F9;
         }
 
-        .invitee-info {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
+        .custom-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .custom-table tbody tr:hover {
+            background: #F8FAFC;
         }
 
         .invitee-name {
-            font-weight: 600;
-            color: #2c3e50;
-            font-size: 1rem;
+            font-weight: 700;
+            color: #111827;
+            font-size: 15px;
+        }
+
+        .card-type-text {
+            font-size: 12px;
+            color: var(--muted-color);
+            margin-top: 3px;
         }
 
         .phone-badge {
-            background: linear-gradient(135deg, var(--info-color), #5bc0de);
-            color: white;
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 500;
-            display: inline-block;
+            background: #EEF2FF;
+            color: var(--elive-blue);
+            padding: 5px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
             width: fit-content;
+            margin-top: 7px;
         }
 
         .phone-badge a {
-            color: white;
-            text-decoration: none;
-        }
-
-        .phone-badge a:hover {
-            color: white;
+            color: var(--elive-blue);
             text-decoration: none;
         }
 
         .channel-status {
             display: flex;
             flex-direction: column;
-            gap: 0.5rem;
+            gap: 8px;
         }
 
         .status-item {
-            display: flex;
+            display: inline-flex;
             align-items: center;
-            gap: 0.5rem;
-            padding: 0;
-            border-radius: 0;
-            background: transparent;
-            font-size: 0.9rem;
-            font-weight: 500;
-            border: none;
+            gap: 7px;
+            font-size: 13px;
+            font-weight: 700;
+            width: fit-content;
+            padding: 5px 10px;
+            border-radius: 999px;
         }
 
         .status-success {
-            color: #155724;
-            background: transparent;
-            border: none;
+            color: #166534;
+            background: #DCFCE7;
         }
 
         .status-failed {
-            color: #721c24;
-            background: transparent;
-            border: none;
+            color: #991B1B;
+            background: #FEE2E2;
         }
 
         .status-pending {
-            color: #856404;
-            background: transparent;
-            border: none;
+            color: #92400E;
+            background: #FEF3C7;
         }
 
         .status-not-sent {
-            color: #6c757d;
-            background: transparent;
-            border: none;
+            color: #374151;
+            background: #F3F4F6;
         }
 
         .reply-message {
-            background: #f8f9fa;
-            padding: 0.75rem;
+            background: #F8FAFC;
+            padding: 10px 12px;
             border-radius: 10px;
-            border-left: 4px solid var(--primary-color);
-            font-size: 0.9rem;
-            color: #495057;
-            max-width: 300px;
+            border-left: 4px solid var(--elive-blue);
+            font-size: 13px;
+            color: #374151;
+            max-width: 360px;
             word-wrap: break-word;
         }
 
         .empty-reply {
-            color: #6c757d;
+            color: var(--muted-color);
             font-style: italic;
+            border-left-color: #D1D5DB;
         }
 
-        .icon {
-            width: 18px;
-            height: 18px;
+        .empty-state {
+            display: none;
+            text-align: center;
+            padding: 24px;
+            color: var(--muted-color);
+            font-weight: 600;
         }
 
         @media (max-width: 768px) {
             .main-container {
-                margin: 1rem;
-                border-radius: 15px;
+                margin: 12px;
+                border-radius: 14px;
             }
 
             .header-section {
-                padding: 1.5rem;
+                padding: 20px;
             }
 
             .event-title {
-                font-size: 1.5rem;
+                font-size: 21px;
             }
 
-            .search-container,
+            .event-subtitle {
+                font-size: 14px;
+            }
+
+            .social-link {
+                margin-top: 14px;
+            }
+
             .stats-container,
+            .search-container,
             .table-container {
-                padding: 1rem;
+                padding: 14px;
             }
 
-            .custom-table thead th,
+            .custom-table thead {
+                display: none;
+            }
+
+            .custom-table,
+            .custom-table tbody,
+            .custom-table tr,
+            .custom-table td {
+                display: block;
+                width: 100%;
+            }
+
+            .custom-table tr {
+                border-bottom: 1px solid var(--border);
+                padding: 12px;
+            }
+
             .custom-table tbody td {
-                padding: 0.75rem 0.5rem;
-                font-size: 0.85rem;
+                border-bottom: none;
+                padding: 7px 0;
             }
 
-            .stat-item {
-                margin-bottom: 1rem;
-            }
-
-            .reply-message {
-                max-width: 200px;
-                font-size: 0.8rem;
-            }
-        }
-
-        @media (max-width: 576px) {
-            .custom-table {
-                font-size: 0.8rem;
-            }
-
-            .custom-table thead th,
-            .custom-table tbody td {
-                padding: 0.5rem 0.25rem;
-            }
-
-            .invitee-name {
-                font-size: 0.9rem;
-            }
-
-            .phone-badge {
-                font-size: 0.8rem;
-                padding: 0.2rem 0.5rem;
-            }
-
-            .status-item {
-                font-size: 0.8rem;
-                padding: 0.4rem;
+            .custom-table tbody td::before {
+                content: attr(data-label);
+                display: block;
+                font-size: 11px;
+                font-weight: 800;
+                color: var(--muted-color);
+                text-transform: uppercase;
+                margin-bottom: 4px;
             }
         }
     </style>
 </head>
 
 <body>
-    <div class="container-fluid">
-        <div class="main-container">
-            <!-- Header Section -->
-            <div class="header-section">
-                <div class="row align-items-center">
-                    <div class="col-lg-8">
-                        <h1 class="event-title">
-                            <i class="bi bi-calendar-event me-2"></i>
-                            Event: <span class="text-warning">{{ $event->name }}</span>
-                        </h1>
-                        <p class="event-subtitle mb-0">
-                            <i class="bi bi-people me-2"></i>
-                            Track invitation progress and responses
-                        </p>
-                    </div>
-                    <div class="col-lg-4 text-end">
-                        <a href="https://instagram.com/e_live_card" class="social-link">
-                            <i class="bi bi-instagram me-2"></i>
-                            @e_live_card
-                        </a>
-                    </div>
-                </div>
-            </div>
+@php
+    $eventName = $event->name ?? 'Event';
 
-            <!-- Stats Section -->
-            <div class="stats-container">
-                <div class="row g-3">
-                    <div class="col-md-3 col-6">
-                        <div class="stat-item">
-                            <span class="stat-number">{{ $double_invitees }}</span>
-                            <span class="stat-label">Double</span>
-                        </div>
-                    </div>
-                    <div class="col-md-3 col-6">
-                        <div class="stat-item">
-                            <span class="stat-number">{{ $single_invitees }}</span>
-                            <span class="stat-label">Single</span>
-                        </div>
-                    </div>
-                    <div class="col-md-3 col-6">
-                        <div class="stat-item">
-                            <span class="stat-number">{{ $group_invitees}}</span>
-                            <span class="stat-label">Group Cards</span>
-                        </div>
-                    </div>
-                    <div class="col-md-3 col-6">
-                        <div class="stat-item">
-                            <span class="stat-number">{{ $total_invitees }}</span>
-                            <span class="stat-label">Total Invitees</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-              <!-- Search Section -->
-            <div class="search-container">
-                <div class="row">
-                    <div class="col-12">
-                        <div class="input-group">
-                            <span class="input-group-text bg-transparent border-end-0">
-                                <i class="bi bi-search text-muted"></i>
-                            </span>
-                            <input type="text" class="form-control search-input border-start-0" id="searchInput"
-                                placeholder="Search by name or phone number...">
-                        </div>
-                    </div>
-                </div>
-            </div>
+    $doubleInvitees = $double_invitees ?? 0;
+    $singleInvitees = $single_invitees ?? 0;
+    $groupInvitees = $group_invitees ?? 0;
+    $totalInvitees = $total_invitees ?? ($invitees->count() ?? 0);
 
-            <!-- Table Section -->
-            <div class="table-container">
-                <div class="table-responsive">
-                    <table class="table custom-table mb-0">
-                        <thead>
-                            <tr>
-                                <th width="5%">#</th>
-                                <th width="30%">Invitee</th>
-                                <th width="35%">Channel Status</th>
-                                <th width="30%">WhatsApp Reply</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach ($invitees as $invitee)
-                                <tr>
-                                    <td>
-                                        <span class="badge bg-primary rounded-pill">{{ $loop->iteration }}</span>
-                                    </td>
-                                    <td>
-                                        <div class="invitee-info">
-                                            <div class="invitee-name">{{ $invitee->guest_name }}</div>
-                                            <div class="text-muted" style="font-size: 0.8rem; color: #6c757d;"> {{$invitee->card_type}}</div>
-                                            <div class="phone-badge">
-                                                <i class="bi bi-telephone me-1"></i>
-                                                <a href="tel:0{{ $invitee->guest_phone }}">{{ '0' . $invitee->guest_phone }}</a>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="channel-status">
-                                            <div class="status-item {{ $invitee->sendwhatsappcard && $invitee->sendwhatsappcard->delivery_status === 'delivered' ? 'status-success' : ($invitee->sendwhatsappcard && $invitee->sendwhatsappcard->delivery_status === 'failed' ? 'status-failed' : ($invitee->sendwhatsappcard && $invitee->sendwhatsappcard->delivery_status ? 'status-pending' : 'status-not-sent')) }}">
-                                                <i class="bi bi-whatsapp icon"></i>
-                                                <span>{{ $invitee->sendwhatsappcard ? $invitee->sendwhatsappcard->delivery_status : '' }}</span>
-                                            </div>
-                                            <div class="status-item {{ $invitee->messagecard && $invitee->messagecard->delivery_status === 'delivered' ? 'status-success' : ($invitee->messagecard && $invitee->messagecard->delivery_status === 'failed' ? 'status-failed' : ($invitee->messagecard && $invitee->messagecard->delivery_status ? 'status-pending' : 'status-not-sent')) }}">
-                                                <i class="bi bi-envelope icon"></i>
-                                                <span>{{ $invitee->messagecard ? $invitee->messagecard->delivery_status : '' }}</span>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        @if($invitee->sendwhatsappcard && $invitee->sendwhatsappcard->reply_message)
-                                            <div class="reply-message">
-                                                <i class="bi bi-chat-dots me-2"></i>
-                                                {{ $invitee->sendwhatsappcard->reply_message }}
-                                            </div>
-                                        @else
-                                        <!--reply-->
-                                            <div class="reply-message empty-reply">
-                                                <i class="bi bi-dash-circle me-2"></i>
-                                               <!--no reply yet-->
-                                            </div>
-                                        @endif
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
+    $formatPhone = function ($phone) {
+        $phone = preg_replace('/\D+/', '', (string) $phone);
+
+        if ($phone === '') {
+            return '';
+        }
+
+        if (str_starts_with($phone, '255')) {
+            return '+' . $phone;
+        }
+
+        if (str_starts_with($phone, '0')) {
+            return $phone;
+        }
+
+        return '0' . $phone;
+    };
+
+    $statusClass = function ($status) {
+        $status = strtolower((string) $status);
+
+        return match ($status) {
+            'delivered', 'sent', 'success', 'successful', 'read' => 'status-success',
+            'failed', 'error', 'undelivered', 'rejected' => 'status-failed',
+            'pending', 'queued', 'processing', 'submitted' => 'status-pending',
+            default => 'status-not-sent',
+        };
+    };
+
+    $statusLabel = function ($status) {
+        $status = trim((string) $status);
+
+        return $status !== '' ? ucfirst($status) : 'Not sent';
+    };
+@endphp
+
+<div class="container-fluid">
+    <div class="main-container">
+
+        <div class="header-section">
+            <div class="row align-items-center">
+                <div class="col-lg-8">
+                    <h1 class="event-title">
+                        <i class="bi bi-calendar-event me-2"></i>
+                        Event: <span>{{ $eventName }}</span>
+                    </h1>
+                    <p class="event-subtitle">
+                        <i class="bi bi-people me-2"></i>
+                        Track invitation progress, delivery status, and WhatsApp replies.
+                    </p>
+                </div>
+
+                <div class="col-lg-4 text-lg-end">
+                    <a href="https://instagram.com/e_live_card" target="_blank" rel="noopener" class="social-link">
+                        <i class="bi bi-instagram"></i>
+                        @e_live_card
+                    </a>
                 </div>
             </div>
         </div>
+
+        <div class="stats-container">
+            <div class="row g-3">
+                <div class="col-md-3 col-6">
+                    <div class="stat-item">
+                        <span class="stat-number">{{ $doubleInvitees }}</span>
+                        <span class="stat-label">Double</span>
+                    </div>
+                </div>
+
+                <div class="col-md-3 col-6">
+                    <div class="stat-item">
+                        <span class="stat-number">{{ $singleInvitees }}</span>
+                        <span class="stat-label">Single</span>
+                    </div>
+                </div>
+
+                <div class="col-md-3 col-6">
+                    <div class="stat-item">
+                        <span class="stat-number">{{ $groupInvitees }}</span>
+                        <span class="stat-label">Group Cards</span>
+                    </div>
+                </div>
+
+                <div class="col-md-3 col-6">
+                    <div class="stat-item">
+                        <span class="stat-number">{{ $totalInvitees }}</span>
+                        <span class="stat-label">Total Invitees</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="search-container">
+            <div class="input-group">
+                <span class="input-group-text border-end-0">
+                    <i class="bi bi-search text-muted"></i>
+                </span>
+                <input
+                    type="text"
+                    class="form-control search-input border-start-0"
+                    id="searchInput"
+                    placeholder="Search by name, phone, card type, or status..."
+                    autocomplete="off"
+                >
+            </div>
+        </div>
+
+        <div class="table-container">
+            <div class="table-responsive">
+                <table class="table custom-table" id="progressTable">
+                    <thead>
+                        <tr>
+                            <th width="5%">#</th>
+                            <th width="30%">Invitee</th>
+                            <th width="35%">Channel Status</th>
+                            <th width="30%">WhatsApp Reply</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                    @forelse ($invitees as $invitee)
+                        @php
+                            $guestName = $invitee->guest_name ?? $invitee->name ?? 'Unknown Invitee';
+                            $cardType = $invitee->card_type ?? $invitee->cardtype ?? 'N/A';
+                            $phoneDisplay = $formatPhone($invitee->guest_phone ?? $invitee->phone ?? '');
+
+                            $whatsappStatus = $invitee->sendwhatsappcard->delivery_status ?? null;
+                            $smsStatus = $invitee->messagecard->delivery_status ?? null;
+
+                            $replyMessage = $invitee->sendwhatsappcard->reply_message ?? null;
+                        @endphp
+
+                        <tr>
+                            <td data-label="#">
+                                <span class="badge bg-primary rounded-pill">{{ $loop->iteration }}</span>
+                            </td>
+
+                            <td data-label="Invitee">
+                                <div class="invitee-name">{{ $guestName }}</div>
+                                <div class="card-type-text">{{ $cardType }}</div>
+
+                                @if ($phoneDisplay)
+                                    <div class="phone-badge">
+                                        <i class="bi bi-telephone"></i>
+                                        <a href="tel:{{ $phoneDisplay }}">{{ $phoneDisplay }}</a>
+                                    </div>
+                                @else
+                                    <div class="phone-badge">
+                                        <i class="bi bi-telephone"></i>
+                                        No phone
+                                    </div>
+                                @endif
+                            </td>
+
+                            <td data-label="Channel Status">
+                                <div class="channel-status">
+                                    <div class="status-item {{ $statusClass($whatsappStatus) }}">
+                                        <i class="bi bi-whatsapp"></i>
+                                        <span>WhatsApp: {{ $statusLabel($whatsappStatus) }}</span>
+                                    </div>
+
+                                    <div class="status-item {{ $statusClass($smsStatus) }}">
+                                        <i class="bi bi-chat-left-text"></i>
+                                        <span>SMS: {{ $statusLabel($smsStatus) }}</span>
+                                    </div>
+                                </div>
+                            </td>
+
+                            <td data-label="WhatsApp Reply">
+                                @if (!empty($replyMessage))
+                                    <div class="reply-message">
+                                        <i class="bi bi-chat-dots me-2"></i>
+                                        {{ $replyMessage }}
+                                    </div>
+                                @else
+                                    <div class="reply-message empty-reply">
+                                        <i class="bi bi-dash-circle me-2"></i>
+                                        No reply yet
+                                    </div>
+                                @endif
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-4">
+                                No invitees found for this event.
+                            </td>
+                        </tr>
+                    @endforelse
+                    </tbody>
+                </table>
+
+                <div class="empty-state" id="emptySearchState">
+                    <i class="bi bi-search me-2"></i>
+                    No matching invitees found.
+                </div>
+            </div>
+        </div>
+
     </div>
+</div>
 
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const searchInput = document.getElementById('searchInput');
-            const table = document.querySelector('table');
-            const tbody = table.querySelector('tbody');
-            const rows = tbody.querySelectorAll('tr');
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-            searchInput.addEventListener('input', function() {
-                const filter = searchInput.value.trim().toLowerCase();
-                rows.forEach(row => {
-                    const tds = row.querySelectorAll('td');
-                    if (!tds || tds.length < 2) return;
-                    const namePhoneText = tds[1].textContent.toLowerCase();
-                    if (filter === '' || namePhoneText.includes(filter)) {
-                        row.style.display = '';
-                    } else {
-                        row.style.display = 'none';
-                    }
-                });
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const searchInput = document.getElementById('searchInput');
+        const table = document.getElementById('progressTable');
+        const tbody = table.querySelector('tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        const emptySearchState = document.getElementById('emptySearchState');
+
+        searchInput.addEventListener('input', function () {
+            const filter = searchInput.value.trim().toLowerCase();
+            let visibleCount = 0;
+
+            rows.forEach(function (row) {
+                const text = row.textContent.toLowerCase();
+                const shouldShow = filter === '' || text.includes(filter);
+
+                row.style.display = shouldShow ? '' : 'none';
+
+                if (shouldShow) {
+                    visibleCount++;
+                }
             });
 
-            // Add smooth scrolling and enhanced interactions
-            const statItems = document.querySelectorAll('.stat-item');
-            statItems.forEach(item => {
-                item.addEventListener('mouseenter', function() {
-                    this.style.transform = 'translateY(-5px) scale(1.02)';
-                });
-
-                item.addEventListener('mouseleave', function() {
-                    this.style.transform = 'translateY(0) scale(1)';
-                });
-            });
+            emptySearchState.style.display = visibleCount === 0 && rows.length > 0 ? 'block' : 'none';
         });
-    </script>
+    });
+</script>
 </body>
-
 </html>
