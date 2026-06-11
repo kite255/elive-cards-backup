@@ -52,26 +52,13 @@
     }
 
     @keyframes iconPop {
-        0% {
-            transform: scale(0) rotate(-180deg);
-        }
-
-        50% {
-            transform: scale(1.2) rotate(0deg);
-        }
-
-        100% {
-            transform: scale(1) rotate(0deg);
-        }
+        0% { transform: scale(0) rotate(-180deg); }
+        50% { transform: scale(1.2) rotate(0deg); }
+        100% { transform: scale(1) rotate(0deg); }
     }
 
-    .success-icon path {
-        fill: #198754;
-    }
-
-    .error-icon path {
-        fill: #dc3545;
-    }
+    .success-icon path { fill: #198754; }
+    .error-icon path { fill: #dc3545; }
 
     .card-body {
         padding: 2rem;
@@ -124,6 +111,7 @@
     .scanning-progress {
         display: flex;
         align-items: center;
+        justify-content: center;
     }
 
     .badge {
@@ -137,6 +125,7 @@
         padding: 1rem;
         border-radius: 10px;
         margin-top: 1rem;
+        text-align: left;
     }
 
     .guest-details p {
@@ -147,143 +136,241 @@
         width: 20px;
         text-align: center;
     }
+
+    #reader {
+        width: 100%;
+        max-width: 520px;
+        min-height: 320px;
+        margin: 0 auto;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        overflow: hidden;
+        background: #f8f9fa;
+    }
 </style>
 
+@php
+    $sessionGuest = session('guest');
+    $sessionEvent = session('event') ?? $event;
+    $scanAgainUrl = route('scan-cards.index', $sessionEvent->code ?? $event->code ?? $event->id);
+@endphp
 
-    <script src="{{asset('assets/js/script.js')}}"></script>
+<div class="notification-container">
+    <div class="row justify-content-center">
+        <div class="col-12">
 
-    <div class="notification-container">
-        <div class="row justify-content-center">
-            <div class="col-12">
-                @if(session('success-message'))
+            @if(session('success-message'))
                 <div class="notification-card">
                     <div class="card-header">
                         <svg class="success-icon" viewBox="0 0 24 24">
                             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
                         </svg>
                     </div>
+
                     <div class="card-body">
-                        <div class="guest-info mb-4">
-                            @php
-                            $guest = session('guest');
-                            @endphp
-                            <h4 class="guest-name mb-2">{{ $guest->guest_name }}</h4>
-                            <div class="scanning-progress mb-3">
-                                <span class="badge bg-success">
-                                    {{ session('scanning_progress')['current'] }} out of {{ session('scanning_progress')['total'] }}
-                                </span>
+                        <p class="card-text text-success fw-bold">{{ session('success-message') }}</p>
+
+                        @if($sessionGuest)
+                            <div class="guest-info mb-4">
+                                <h4 class="guest-name mb-2">{{ $sessionGuest->guest_name }}</h4>
+
+                                @if(session('scanning_progress'))
+                                    <div class="scanning-progress mb-3">
+                                        <span class="badge bg-success">
+                                            {{ session('scanning_progress')['current'] ?? 0 }}
+                                            out of
+                                            {{ session('scanning_progress')['total'] ?? 1 }}
+                                        </span>
+                                    </div>
+                                @endif
+
+                                <div class="guest-details">
+                                    <p class="text-muted mb-1">
+                                        <i class="fas fa-phone me-2"></i>
+                                        {{ $sessionGuest->guest_phone ?? '-' }}
+                                    </p>
+
+                                    <p class="text-muted mb-1">
+                                        <i class="fas fa-ticket-alt me-2"></i>
+                                        {{ $sessionGuest->invitation_code ?? '-' }}
+                                    </p>
+
+                                    <p class="text-muted mb-0">
+                                        <i class="fas fa-id-card me-2"></i>
+                                        {{ $sessionGuest->card_type ?? '-' }}
+                                    </p>
+                                </div>
                             </div>
-                            <div class="guest-details">
-                                <p class="text-muted mb-1">
-                                    <i class="fas fa-phone me-2"></i>
-                                    {{ $guest->guest_phone }}
+
+                            @if(!empty($sessionGuest->scanned_time))
+                                <p class="mt-2 mb-2">
+                                    Scanned time:
+                                    {{ \Carbon\Carbon::parse($sessionGuest->scanned_time)->format('d M Y, h:i A') }}
                                 </p>
-                                <p class="text-muted mb-0">
-                                    <i class="fas fa-ticket-alt me-2"></i>
-                                    {{ $guest->invitation_code }}
-                                </p>
-                            </div>
-                        </div>
-                       <p class="mt-2 mb-2">Scanned time: {{ \Carbon\Carbon::parse($guest->scanned_time)->format('d M Y, h:i A') }}</p>
-                        <a href="{{ route('scan-cards.index', session('event')->code) }}" class="btn btn-primary btn-block w-100">Scan Another Card</a>
+                            @endif
+                        @endif
+
+                        <a href="{{ $scanAgainUrl }}" class="btn btn-primary btn-block w-100">
+                            Scan Another Card
+                        </a>
                     </div>
                 </div>
-                @endif
+            @endif
 
-                @if(session('error-message'))
+            @if(session('error-message'))
                 <div class="notification-card">
                     <div class="card-header">
                         <svg class="error-icon" viewBox="0 0 24 24">
                             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
                         </svg>
                     </div>
+
                     <div class="card-body">
-                        <p class="card-text">{{ session('error-message') }}</p>
-                        @if(session('guest'))
-                        @php
-                        $guest = session('guest');
-                        @endphp
-                        <div class="guest-details mb-3">
-                            <p class="text-muted mb-1">
-                                <i class="fas fa-user me-2"></i>
-                                {{ $guest->guest_name }}
-                            </p>
-                            <p class="text-muted mb-1">
-                                <i class="fas fa-phone me-2"></i>
-                                {{ $guest->guest_phone }}
-                            </p>
-                            <p class="text-muted mb-0">
-                                <i class="fas fa-ticket-alt me-2"></i>
-                                {{ $guest->invitation_code }}
-                            </p>
-                        </div>
+                        <p class="card-text text-danger fw-bold">{{ session('error-message') }}</p>
+
+                        @if($sessionGuest)
+                            <div class="guest-details mb-3">
+                                <p class="text-muted mb-1">
+                                    <i class="fas fa-user me-2"></i>
+                                    {{ $sessionGuest->guest_name ?? '-' }}
+                                </p>
+
+                                <p class="text-muted mb-1">
+                                    <i class="fas fa-phone me-2"></i>
+                                    {{ $sessionGuest->guest_phone ?? '-' }}
+                                </p>
+
+                                <p class="text-muted mb-1">
+                                    <i class="fas fa-ticket-alt me-2"></i>
+                                    {{ $sessionGuest->invitation_code ?? '-' }}
+                                </p>
+
+                                <p class="text-muted mb-0">
+                                    <i class="fas fa-id-card me-2"></i>
+                                    {{ $sessionGuest->card_type ?? '-' }}
+                                </p>
+                            </div>
+
+                            @if(!empty($sessionGuest->scanned_time))
+                                <p class="mt-2 mb-2">
+                                    Last scanned:
+                                    {{ \Carbon\Carbon::parse($sessionGuest->scanned_time)->format('d M Y, h:i A') }}
+                                </p>
+                            @endif
                         @endif
-                         <p class="mt-2 mb-2">Scanned time: {{ \Carbon\Carbon::parse($guest->scanned_time)->format('d M Y, h:i A') }}</p>
-                        <a href="{{ route('scan-cards.index', session('event')->code) }}" class="btn btn-primary error-btn btn-block w-100">Scan Another Card</a>
+
+                        <a href="{{ $scanAgainUrl }}" class="btn btn-primary error-btn btn-block w-100">
+                            Scan Another Card
+                        </a>
                     </div>
                 </div>
-                @endif
-            </div>
+            @endif
+
         </div>
     </div>
+</div>
 
-    <div class="container">
-        <div class="row justify-content-center align-items-center">
-            <div id="reader" class="col-md-6"></div>
-        </div>
-        <div class="row justify-content-center mt-3">
-            <div id="show" style="display: none;" class="text-center">
-                <h4>Scanned Result</h4>
-                <p style="color: blue;" id="result"></p>
-                <p style="color: blue;" id="result1"></p>
-            </div>
+<div class="container py-4">
+    <div class="row justify-content-center align-items-center">
+        <div class="col-md-8 text-center">
+            <h4 class="mb-3">Scan Invitation Card</h4>
+            <div id="reader"></div>
+            <p class="text-muted mt-2 mb-0">Allow camera permission and scan the invitee QR code.</p>
         </div>
     </div>
+</div>
 
-    <!-- scan card by invitation code -->
-    <div class="container mt-4">
-        <div class="row justify-content-center">
-            <div class="col-md-6">
-                <form action="{{ route('verifycard', $event->id) }}" method="GET" class="d-flex">
-                    <!--@csrf-->
-                    <input type="number" name="scanned_value" class="form-control" placeholder="Enter invitation code" required>
-                    <button type="submit" class="btn btn-success ms-2">Verify</button>
-                </form>
-            </div>
+<div class="container mt-2 mb-4">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <form action="{{ route('verifycard', $event->id) }}" method="GET" class="d-flex">
+                <input
+                    type="text"
+                    name="scanned_value"
+                    class="form-control"
+                    placeholder="Enter invitation code"
+                    required
+                    autocomplete="off"
+                >
+                <button type="submit" class="btn btn-success ms-2">
+                    Verify
+                </button>
+            </form>
         </div>
     </div>
+</div>
 
+<script src="{{ asset('assets/js/script.js') }}"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
 
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const notificationContainer = document.querySelector('.notification-container');
 
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+        if (notificationContainer && notificationContainer.querySelector('.notification-card')) {
+            setTimeout(() => {
+                notificationContainer.classList.add('show');
+            }, 100);
+        }
 
-    <script>
-        // Show notification with animation
-        document.addEventListener('DOMContentLoaded', function() {
-            const notificationContainer = document.querySelector('.notification-container');
-            if (notificationContainer) {
-                setTimeout(() => {
-                    notificationContainer.classList.add('show');
-                }, 100);
+        function extractCode(scannedText) {
+            if (!scannedText) {
+                return '';
             }
-        });
+
+            scannedText = scannedText.trim();
+
+            try {
+                const url = new URL(scannedText);
+                const parts = url.pathname.split('/').filter(Boolean);
+
+                if (parts.length > 0) {
+                    return parts[parts.length - 1];
+                }
+            } catch (e) {
+                return scannedText;
+            }
+
+            return scannedText;
+        }
 
         let html5Qrcode = null;
         let isScanning = false;
 
         function startScanner() {
+            if (notificationContainer && notificationContainer.querySelector('.notification-card')) {
+                return;
+            }
+
+            if (typeof Html5Qrcode === 'undefined') {
+                console.error('Html5Qrcode is not loaded. Check assets/js/script.js');
+                return;
+            }
+
             if (!html5Qrcode) {
                 html5Qrcode = new Html5Qrcode('reader');
             }
 
-            const qrCodeSuccessCallback = (decodedText, decodedResult) => {
-                if (decodedText) {
-                    // Redirect to the route with the scanned value
-                    window.location.href = '{{ route("verifycard",$event->id) }}?scanned_value=' + decodedText;
-                    html5Qrcode.stop();
-                    isScanning = false;
-                }
+            if (isScanning) {
+                return;
             }
+
+            const qrCodeSuccessCallback = (decodedText) => {
+                const code = extractCode(decodedText);
+
+                if (!code) {
+                    return;
+                }
+
+                isScanning = false;
+
+                html5Qrcode.stop()
+                    .catch(() => {})
+                    .finally(() => {
+                        window.location.href = '{{ route("verifycard", $event->id) }}?scanned_value=' + encodeURIComponent(code);
+                    });
+            };
 
             const config = {
                 fps: 10,
@@ -291,34 +378,20 @@
                     width: 250,
                     height: 250
                 }
-            }
+            };
 
-            html5Qrcode.start({
-                facingMode: "environment"
-            }, config, qrCodeSuccessCallback);
-            isScanning = true;
-        }
-
-        // Only start scanning if there's no notification
-        const notificationContainer = document.querySelector('.notification-container');
-        if (!notificationContainer || !notificationContainer.querySelector('.notification-card')) {
-            startScanner();
-        }
-
-        // Add click event listeners to "Scan Another Card" buttons
-        document.querySelectorAll('.btn-primary').forEach(button => {
-            button.addEventListener('click', function(e) {
-                e.preventDefault();
-                const href = this.getAttribute('href');
-                // Start scanner before redirecting
-                startScanner();
-                // Then redirect
-                window.location.href = href;
+            html5Qrcode.start(
+                { facingMode: "environment" },
+                config,
+                qrCodeSuccessCallback
+            ).then(() => {
+                isScanning = true;
+            }).catch((error) => {
+                console.error('Camera start failed:', error);
             });
-        });
-    </script>
+        }
 
-    <!-- Add Font Awesome for icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-
+        startScanner();
+    });
+</script>
 @endsection
